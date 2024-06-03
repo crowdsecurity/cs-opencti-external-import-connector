@@ -18,7 +18,6 @@ import stix2
 from stix2 import (
     Relationship,
     Indicator,
-    Identity,
     AttackPattern,
     Vulnerability,
     Location,
@@ -27,11 +26,11 @@ from stix2 import (
     IPv4Address,
     ExternalReference,
     Bundle,
-
+    Identity,
 )
 
 from .constants import MITRE_URL, CVE_REGEX, FAKE_INDICATOR_ID
-from .helper import clean_config, handle_observable_description
+from .helper import clean_config
 
 
 def _get_confidence_level(confidence: str) -> int:
@@ -51,29 +50,21 @@ class CrowdSecBuilder:
     helper: OpenCTIConnectorHelper
 
     def __init__(
-        self, helper: OpenCTIConnectorHelper, config: Dict, cti_data: Dict
+        self,
+        helper: OpenCTIConnectorHelper,
+        config: Dict,
+        cti_data: Dict,
+        organisation: Identity,
     ) -> None:
         self.helper = helper
+        self.organisation = organisation
         self.update_existing_data = get_config_variable(
             "CONNECTOR_UPDATE_EXISTING_DATA",
             ["connector", "update_existing_data"],
             config,
             False,
         )
-        self.crowdsec_ent_name = clean_config(
-            get_config_variable(
-                "CROWDSEC_NAME", ["crowdsec", "name"], config, default="CrowdSec"
-            )
-        )
-        self.crowdsec_ent_desc = clean_config(
-            get_config_variable(
-                "CROWDSEC_DESCRIPTION",
-                ["crowdsec", "description"],
-                config,
-                default="CrowdSec CTI enrichment",
-            )
-        )
-        self.crowdsec_ent = None
+
         self.bundle_objects = []
         self.labels_scenario_name = get_config_variable(
             "CROWDSEC_LABELS_SCENARIO_NAME",
@@ -202,7 +193,7 @@ class CrowdSecBuilder:
     def upsert_observable_ipv4_address(
         self,
         description: str,
-        labels: List[Label],
+        labels: List[Dict],
         markings: List[str],
         external_references: List[Dict],
         update: bool = False,
@@ -216,9 +207,7 @@ class CrowdSecBuilder:
                 "x_opencti_description": description,
                 "labels": [label["value"] for label in labels] if labels else [],
                 "x_opencti_type": "IPv4-Addr",
-                "created_by_ref": None
-                if update
-                else self.get_or_create_crowdsec_ent()["standard_id"],
+                "created_by_ref": None if update else self.organisation["standard_id"],
                 "external_references": external_references,
             },
         )
@@ -237,37 +226,21 @@ class CrowdSecBuilder:
             description=description,
         )
 
+    @staticmethod
     def add_external_reference_to_observable(
-        self, stix_observable: Dict, source_name: str, url: str, description: str
+        stix_observable: Dict, source_name: str, url: str, description: str
     ) -> Dict[str, str]:
         ext_ref_dict = {
             "source_name": source_name,
             "url": url,
             "description": description,
         }
-        self._add_external_ref_to_database(ext_ref_dict)
 
         if "external_references" not in stix_observable:
             stix_observable["external_references"] = []
         stix_observable["external_references"].append(ext_ref_dict)
 
         return ext_ref_dict
-
-    def get_or_create_crowdsec_ent(self) -> Identity:
-        if getattr(self, "crowdsec_ent", None) is not None:
-            return self.crowdsec_ent
-        crowdsec_ent = self.helper.api.stix_domain_object.get_by_stix_id_or_name(
-            name=self.crowdsec_ent_name
-        )
-        if not crowdsec_ent:
-            self.crowdsec_ent = self.helper.api.identity.create(
-                type="Organization",
-                name=self.crowdsec_ent_name,
-                description=self.crowdsec_ent_desc,
-            )
-        else:
-            self.crowdsec_ent = crowdsec_ent
-        return self.crowdsec_ent
 
     def add_indicator_based_on(
         self,
@@ -279,7 +252,7 @@ class CrowdSecBuilder:
         indicator = Indicator(
             id=self.helper.api.indicator.generate_id(pattern),
             name=f"CrowdSec CTI ({self.reputation} IP: {self.ip})",
-            created_by_ref=self.get_or_create_crowdsec_ent()["standard_id"],
+            created_by_ref=self.organisation["standard_id"],
             description=f"CrowdSec CTI detection for {self.ip}",
             pattern=pattern,
             pattern_type="stix",
@@ -303,7 +276,7 @@ class CrowdSecBuilder:
                 observable_id,
             ),
             relationship_type="based-on",
-            created_by_ref=self.get_or_create_crowdsec_ent()["standard_id"],
+            created_by_ref=self.organisation["standard_id"],
             source_ref=indicator.id,
             target_ref=observable_id,
             confidence=self.helper.connect_confidence_level,
@@ -332,7 +305,7 @@ class CrowdSecBuilder:
             custom_properties={
                 "x_mitre_id": mitre_technique["name"],
             },
-            created_by_ref=self.get_or_create_crowdsec_ent()["standard_id"],
+            created_by_ref=self.organisation["standard_id"],
             object_marking_refs=markings,
             external_references=external_references,
         )
@@ -343,7 +316,7 @@ class CrowdSecBuilder:
                 attack_pattern.id,
             ),
             relationship_type="indicates",
-            created_by_ref=self.get_or_create_crowdsec_ent()["standard_id"],
+            created_by_ref=self.organisation["standard_id"],
             source_ref=indicator.id,
             target_ref=attack_pattern.id,
             confidence=self.helper.connect_confidence_level,
@@ -394,7 +367,7 @@ class CrowdSecBuilder:
             object_refs=[observable_id],
             abstract=f"CrowdSec enrichment for {self.ip}",
             content=content,
-            created_by_ref=self.get_or_create_crowdsec_ent()["standard_id"],
+            created_by_ref=self.organisation["standard_id"],
             object_marking_refs=markings,
             custom_properties={
                 "note_types": ["external"],
@@ -424,13 +397,13 @@ class CrowdSecBuilder:
         )
         sighting = Sighting(
             id=StixSightingRelationship.generate_id(
-                self.get_or_create_crowdsec_ent()["standard_id"],
+                self.organisation["standard_id"],
                 observable_id,
                 first_seen,
                 last_seen,
             ),
-            created_by_ref=self.get_or_create_crowdsec_ent()["standard_id"],
-            description=self.crowdsec_ent_desc,
+            created_by_ref=self.organisation["standard_id"],
+            description=f"CrowdSec CTI sighting for IP: {self.ip}",
             first_seen=first_seen,
             last_seen=last_seen,
             count=1,
@@ -438,7 +411,7 @@ class CrowdSecBuilder:
             object_marking_refs=markings,
             external_references=sighting_ext_refs,
             sighting_of_ref=indicator.id if indicator else FAKE_INDICATOR_ID,
-            where_sighted_refs=[self.get_or_create_crowdsec_ent()["standard_id"]],
+            where_sighted_refs=[self.organisation["standard_id"]],
             custom_properties={
                 "x_opencti_sighting_of_ref": observable_id,
             },
@@ -456,7 +429,7 @@ class CrowdSecBuilder:
             id=self.helper.api.vulnerability.generate_id(cve_name),
             name=cve_name,
             description=cve_name,
-            created_by_ref=self.get_or_create_crowdsec_ent()["standard_id"],
+            created_by_ref=self.organisation["standard_id"],
             object_marking_refs=markings,
         )
         relationship = Relationship(
@@ -466,7 +439,7 @@ class CrowdSecBuilder:
                 observable_id,
             ),
             relationship_type="related-to",
-            created_by_ref=self.get_or_create_crowdsec_ent()["standard_id"],
+            created_by_ref=self.organisation["standard_id"],
             source_ref=vulnerability.id,
             target_ref=observable_id,
             confidence=self.helper.connect_confidence_level,
@@ -476,15 +449,8 @@ class CrowdSecBuilder:
 
         return vulnerability
 
-    def _add_external_ref_to_database(self, ext_ref_dict: Dict) -> None:
-        """
-        We have to create the external reference in database as creating the object only may lead to data loss
-        Without this, if we delete the external reference in OpenCTI UI, it won't be re-created on next enrichment
-        @see https://github.com/OpenCTI-Platform/connectors/issues/2139
-        """
-        self.helper.api.external_reference.create(**ext_ref_dict)
-
-    def _handle_blocklist_references(self, references: List) -> List[Dict]:
+    @staticmethod
+    def _handle_blocklist_references(references: List) -> List[Dict]:
         blocklist_references = []
         for reference in references:
             if (
@@ -498,7 +464,6 @@ class CrowdSecBuilder:
                     "url": first_url,
                     "description": reference["description"],
                 }
-                self._add_external_ref_to_database(ext_ref_dict)
                 blocklist_references.append(ext_ref_dict)
 
         return blocklist_references
@@ -511,11 +476,10 @@ class CrowdSecBuilder:
             "url": f"{MITRE_URL}{mitre_technique['name']}",
             "description": description,
         }
-        self._add_external_ref_to_database(ext_ref_dict)
 
         return ext_ref_dict
 
-    def handle_labels(self) -> List[Label]:
+    def handle_labels(self) -> List[Dict]:
         # Initialize labels and label colors
         labels = []
         labels_mitre_color = self.labels_mitre_color
@@ -564,14 +528,16 @@ class CrowdSecBuilder:
         # Create labels
         result = []
         for value, color in labels:
-            label = self.helper.api.label.read_or_create_unchecked(
-                value=value, color=color
-            )
+            # label = self.helper.api.label.read_or_create_unchecked(
+            #     value=value, color=color
+            # )
+            label = {
+                "standard_id": self.helper.api.label.generate_id(value=value),
+                "value": value,
+                "color": color
+            }
             # If the user has no rights to create the label, label is None
-            if label is not None:
-                # self.helper.api.stix_cyber_observable.add_label(
-                #     id=observable_id, label_id=label["id"]
-                # )
+            if label is not None and label not in result:
                 result.append(label)
 
         return result
@@ -604,7 +570,7 @@ class CrowdSecBuilder:
                         )
                     ],
                 },
-                created_by_ref=self.get_or_create_crowdsec_ent()["standard_id"],
+                created_by_ref=self.organisation["standard_id"],
                 object_marking_refs=markings,
             )
 
@@ -619,7 +585,7 @@ class CrowdSecBuilder:
                         country["id"],
                     ),
                     relationship_type="targets",
-                    created_by_ref=self.get_or_create_crowdsec_ent()["standard_id"],
+                    created_by_ref=self.organisation["standard_id"],
                     source_ref=attack_pattern_id,
                     target_ref=country["id"],
                     confidence=self.helper.connect_confidence_level,

@@ -4,23 +4,24 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
 from urllib.parse import urljoin
 
 import stix2
 import yaml
-from pycti import OpenCTIConnectorHelper, get_config_variable, OpenCTIStix2, STIX_EXT_OCTI_SCO
+from pycti import (
+    OpenCTIConnectorHelper,
+    get_config_variable,
+)
+from stix2 import Identity
 
+from .builder import CrowdSecBuilder
+from .client import CrowdSecClient, QuotaExceedException
+from .constants import CTI_API_URL, CTI_URL
 from .helper import (
     clean_config,
-    verify_checksum,
-    read_cti_dump,
     delete_folder,
     handle_observable_description,
 )
-from .constants import CTI_API_URL, CTI_URL
-from .builder import CrowdSecBuilder
-from .client import CrowdSecClient, QuotaExceedException
 
 
 class CrowdSecImporter:
@@ -34,6 +35,10 @@ class CrowdSecImporter:
             else {}
         )
         self.helper = OpenCTIConnectorHelper(self.config)
+
+        self.crowdsec_ent_name = "CrowdSec"
+        self.crowdsec_ent_desc = "Curated Threat Intelligence Powered by the Crowd"
+
         self.crowdsec_cti_key = clean_config(
             get_config_variable(
                 "CROWDSEC_IMPORT_KEY", ["crowdsec_import", "key"], self.config
@@ -104,6 +109,17 @@ class CrowdSecImporter:
 
         self.indicator_create_from = raw_indicator_create_from.split(",")
 
+        raw_dump_lists = clean_config(
+            get_config_variable(
+                "CROWDSEC_DUMP_LISTS",
+                ["crowdsec_import", "dump_lists"],
+                self.config,
+                default="fire",
+            )
+        )
+
+        self.dump_lists = raw_dump_lists.split(",")
+
         self.attack_pattern_create_from_mitre = get_config_variable(
             "CROWDSEC_IMPORT_ATTACK_PATTERN_CREATE_FROM_MITRE",
             ["crowdsec_import", "attack_pattern_create_from_mitre"],
@@ -137,6 +153,22 @@ class CrowdSecImporter:
 
     def get_interval(self):
         return int(self.interval) * 60 * 60 * 24
+
+    def get_or_create_crowdsec_ent(self) -> Identity:
+        if getattr(self, "crowdsec_ent", None) is not None:
+            return self.crowdsec_ent
+        crowdsec_ent = self.helper.api.stix_domain_object.get_by_stix_id_or_name(
+            name=self.crowdsec_ent_name
+        )
+        if not crowdsec_ent:
+            self.crowdsec_ent = self.helper.api.identity.create(
+                type="Organization",
+                name=self.crowdsec_ent_name,
+                description=self.crowdsec_ent_desc,
+            )
+        else:
+            self.crowdsec_ent = crowdsec_ent
+        return self.crowdsec_ent
 
     def run(self) -> None:
         self.helper.log_info("CrowdSec external import running ...")
@@ -173,7 +205,9 @@ class CrowdSecImporter:
                     try:
                         # Retrieve CrowdSec CTI dump json
                         try:
+                            self.helper.log_info("Query CrowdSec API Dump - Started")
                             # dump: Dict[str, Dict] = self.client.get_crowdsec_dump()
+                            self.helper.log_info("Query CrowdSec API Dump - Completed")
                             dump = {"test": "test"}
                         except QuotaExceedException as ex:
                             raise ex
@@ -181,65 +215,47 @@ class CrowdSecImporter:
                         if not dump:
                             return
 
-                        # TODO: add configs to choose fire, smoke or whatever
+                        # TODO
+                        # On pourrait peut être la jouer plus fine pour les labels: les ajouter dans les objets,
+                        # et les créer à la fin, avec les bonnes couleurs
 
-                        # dump_folder = (
-                        #         os.path.dirname(os.path.abspath(__file__)) + "/dump"
-                        # )
-                        # if not os.path.exists(dump_folder):
-                        #     raise FileNotFoundError(
-                        #         f"Dump folder {dump_folder} does not exist"
-                        #     )
-                        # sub_folder = os.path.join(dump_folder, str(timestamp))
-                        # if not os.path.exists(sub_folder):
-                        #     os.makedirs(sub_folder, mode=0o755, exist_ok=True)
-                        #     self.helper.log_debug(
-                        #         f"Temporary {sub_folder} folder created"
-                        #     )
-                        #
-                        # smoke_ips = {}
-                        # smoke = dump.get("smoke", {})
-                        # if smoke:
-                        #     url = smoke.get("url")
-                        #     checksum = smoke.get("checksum")
-                        #     checksum_type = smoke.get("checksum_type")
-                        #     smoke_file = os.path.join(sub_folder, "smoke.tar.gz")
-                        #     self.helper.log_debug(
-                        #         f"Downloading smoke file from {url} ..."
-                        #     )
-                        #     self.client.download_file(url, smoke_file)
-                        #     if not verify_checksum(smoke_file, checksum, checksum_type):
-                        #         raise Exception(
-                        #             "Checksum verification failed for smoke file"
+                        dump_folder = (
+                            os.path.dirname(os.path.abspath(__file__)) + "/dump"
+                        )
+                        if not os.path.exists(dump_folder):
+                            raise FileNotFoundError(
+                                f"Dump folder {dump_folder} does not exist"
+                            )
+                        sub_folder = os.path.join(dump_folder, str(timestamp))
+                        if not os.path.exists(sub_folder):
+                            os.makedirs(sub_folder, mode=0o755, exist_ok=True)
+                            self.helper.log_debug(
+                                f"Temporary {sub_folder} folder created"
+                            )
+
+                        # ip_list = {}
+                        # for dump_list in self.dump_lists:
+                        #     dump_file = os.path.join(sub_folder, f"{dump_list}.tar.gz")
+                        #     list_info = dump.get(dump_list, {})
+                        #     url = list_info.get("url", "")
+                        #     checksum = list_info.get("checksum")
+                        #     checksum_type = list_info.get("checksum_type")
+                        #     if url:
+                        #         self.helper.log_debug(
+                        #             f"Downloading {dump_list} file from {url} ..."
                         #         )
-                        #     self.helper.log_debug(
-                        #         f"Checksum OK.  Reading smoke file ..."
-                        #     )
-                        #     smoke_ips = read_cti_dump(smoke_file)
-                        #     self.helper.log_debug(f"Smoke IPs count: {len(smoke_ips)}")
+                        #         self.client.download_file(url, dump_file)
+                        #         if not verify_checksum(dump_file, checksum, checksum_type):
+                        #             raise Exception(
+                        #                 f"Checksum verification failed for {dump_list} file"
+                        #             )
+                        #         self.helper.log_debug(f"Checksum OK.  Reading {dump_list} file ...")
+                        #         dump_ips = read_cti_dump(dump_file)
+                        #         self.helper.log_debug(f"{dump_list} IPs count: {len(dump_ips)}")
+                        #         ip_list = {**ip_list, **dump_ips}
+                        #     else:
+                        #         self.helper.log_debug(f"No URL found for {dump_list}")
                         #
-                        # fire_ips = {}
-                        # fire = dump.get("fire", {})
-                        # if fire:
-                        #     fire_file = os.path.join(sub_folder, "fire.tar.gz")
-                        #     url = fire.get("url")
-                        #     checksum = fire.get("checksum")
-                        #     checksum_type = fire.get("checksum_type")
-                        #     self.helper.log_debug(
-                        #         f"Downloading fire file from {url} ..."
-                        #     )
-                        #     self.client.download_file(url, fire_file)
-                        #     if not verify_checksum(fire_file, checksum, checksum_type):
-                        #         raise Exception(
-                        #             "Checksum verification failed for fire file"
-                        #         )
-                        #     self.helper.log_debug(
-                        #         f"Checksum OK.  Reading fire file ..."
-                        #     )
-                        #     fire_ips = read_cti_dump(fire_file)
-                        #     self.helper.log_debug(f"Fire IPs count: {len(fire_ips)}")
-                        #
-                        # ip_list = {**smoke_ips, **fire_ips}
 
                         ip_list = {
                             "185.188.249.246": {
@@ -395,18 +411,39 @@ class CrowdSecImporter:
                                 },
                                 "state": "validated",
                                 "expiration": "2024-05-29T14:31:40.935000",
-                                "references": [],
+                                "references": [
+                                    {
+                                        "name": "list:firehol_cybercrime",
+                                        "label": "Firehol cybercrime tracker list",
+                                        "description": "CyberCrime, a project tracking command and control. This list contains command and control IP addresses.",
+                                        "references": [
+                                            "https://iplists.firehol.org/?ipset=cybercrime"
+                                        ]
+                                    }
+                                ],
                             }
                         }
 
-                        self.helper.log_debug(f"Total IPs list count: {len(ip_list)}")
-                        self.helper.log_info("Query CrowdSec API Dump - Completed")
+                        ip_count = len(ip_list)
+                        self.helper.log_info(f"Total IPs count: {ip_count}")
+
                         delete_folder(sub_folder)
                         self.helper.log_debug("Temporary folder deleted")
-                        # Preparing the bundle to be sent to OpenCTI worker
-                        bundle_objects = []
-                        # Creating the bundle from the list
+                        self.helper.log_info(
+                            "Files have been successfully parsed. Sending to OpenCTI starts."
+                        )
+
+                        counter = 0
                         for ip, cti_data in ip_list.items():
+                            start_time = time.time()
+                            counter += 1
+                            self.helper.log_debug(
+                                f"Processing IP {counter}/{ip_count}: {ip}"
+                            )
+                            # Preparing the bundle to be sent to OpenCTI worker
+                            bundle_objects = []
+                            # Get the current timestamp for each IP processed
+                            ip_timestamp = int(start_time)
                             # Early return if last enrichment was less than some configured time
                             database_observable = (
                                 self.helper.api.stix_cyber_observable.read(
@@ -423,7 +460,7 @@ class CrowdSecImporter:
                                 )
                             )
                             handle_description = handle_observable_description(
-                                timestamp, database_observable
+                                ip_timestamp, database_observable
                             )
                             time_since_last_enrichment = handle_description[
                                 "time_since_last_enrichment"
@@ -453,7 +490,10 @@ class CrowdSecImporter:
 
                             indicator = None
                             builder = CrowdSecBuilder(
-                                self.helper, self.config, cti_data=cti_data
+                                self.helper,
+                                self.config,
+                                cti_data=cti_data,
+                                organisation=self.get_or_create_crowdsec_ent(),
                             )
                             cti_external_reference = {
                                 "source_name": "CrowdSec CTI",
@@ -474,14 +514,9 @@ class CrowdSecImporter:
                             )
                             observable_id = stix_observable["id"]
                             # Handle labels
-                            labels = builder.handle_labels()
-
-                            self.helper.log_debug(f"Labels: {labels}")
-
-
-
+                            builder.handle_labels()
+                            # Start Bundle creation wby adding observable
                             builder.add_to_bundle([stix_observable])
-
 
                             # Initialize external reference for sightings
                             sighting_ext_refs = [cti_external_reference]
@@ -497,28 +532,39 @@ class CrowdSecImporter:
                             # Handle mitre_techniques
                             attack_patterns = []
                             for mitre_technique in mitre_techniques:
-                                mitre_external_reference = builder.create_external_ref_for_mitre(
-                                    mitre_technique
+                                mitre_external_reference = (
+                                    builder.create_external_ref_for_mitre(
+                                        mitre_technique
+                                    )
                                 )
                                 sighting_ext_refs.append(mitre_external_reference)
                                 # Create attack pattern
                                 if indicator and self.attack_pattern_create_from_mitre:
-                                    attack_pattern = builder.add_attack_pattern_for_mitre(
-                                        mitre_technique=mitre_technique,
-                                        markings=[self.tlp] if self.tlp else None,
-                                        indicator=indicator,
-                                        external_references=[mitre_external_reference],
+                                    attack_pattern = (
+                                        builder.add_attack_pattern_for_mitre(
+                                            mitre_technique=mitre_technique,
+                                            markings=[self.tlp] if self.tlp else None,
+                                            indicator=indicator,
+                                            external_references=[
+                                                mitre_external_reference
+                                            ],
+                                        )
                                     )
                                     attack_patterns.append(attack_pattern.id)
                             # Handle CVEs
                             for cve in cves:
                                 # Create vulnerability
                                 builder.add_vulnerability_from_cve(
-                                    cve, markings=[self.tlp] if self.tlp else None, observable_id=observable_id
+                                    cve,
+                                    markings=[self.tlp] if self.tlp else None,
+                                    observable_id=observable_id,
                                 )
                             # Handle target countries
                             if attack_patterns:
-                                builder.handle_target_countries(attack_patterns, markings=[self.tlp] if self.tlp else None)
+                                builder.handle_target_countries(
+                                    attack_patterns,
+                                    markings=[self.tlp] if self.tlp else None,
+                                )
                             # Add note
                             if self.create_note:
                                 builder.add_note(
@@ -536,14 +582,19 @@ class CrowdSecImporter:
 
                             bundle_objects.extend(builder.get_bundle())
 
-                        if bundle_objects:
-                            bundle = stix2.Bundle(bundle_objects, allow_custom=True)
-                            bundle_json = bundle.serialize()
-                            # Sending the bundle
-                            self.helper.send_stix2_bundle(
-                                bundle_json,
-                                update=self.update_existing_data,
-                                work_id=work_id,
+                            if bundle_objects:
+                                bundle = stix2.Bundle(bundle_objects, allow_custom=True)
+                                bundle_json = bundle.serialize()
+                                # Sending the bundle
+                                self.helper.send_stix2_bundle(
+                                    bundle_json,
+                                    update=self.update_existing_data,
+                                    work_id=work_id,
+                                )
+                            end_time = time.time()
+                            time_taken = end_time - start_time
+                            self.helper.log_debug(
+                                f"Processing IP {counter}/{ip_count}: {ip} took {time_taken:.4f} seconds"
                             )
 
                         # Store the current timestamp as a last run
