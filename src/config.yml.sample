@@ -36,3 +36,4 @@ crowdsec_import:
   create_sighting: true # Enable/disable creation of sighting for each enrichment
   last_enrichment_date_in_description: true # Enable/disable saving the last enrichment date in observable description
   min_delay_between_enrichments: 300 # Minimum delay between two CrowdSec enrichments in seconds. (Use last enrichment date saved in description.)
+  create_targeted_countries_sigthings: false # Enable/disable creation of a sighting for targeted country
