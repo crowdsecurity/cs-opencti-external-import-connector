@@ -12,8 +12,8 @@ services:
       - CONNECTOR_SCOPE=CrowdSecImport
       - CONNECTOR_CONFIDENCE_LEVEL=100 # From 0 (Unknown) to 100 (Fully trusted)
       - CONNECTOR_LOG_LEVEL=error
-      - CROWDSEC_NAME=CrowdSec
-      - CROWDSEC_KEY=ChangeMe # Add CrowdSec's CTI API Key
-      - CROWDSEC_VERSION=v2 #v2 is the only supported version for now
+      - CROWDSEC_IMPORT_NAME=CrowdSec
+      - CROWDSEC_IMPORT_KEY=ChangeMe # Add CrowdSec's CTI API Key
+      - CROWDSEC_IMPORT_API_VERSION=v2 #v2 is the only supported version for now
     restart: always
   # If you add it to your OpenCTI docker-compose, add depends_on: - opencti

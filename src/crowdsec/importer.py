@@ -51,7 +51,7 @@ class CrowdSecImporter:
         )
         self.crowdsec_api_version = clean_config(
             get_config_variable(
-                "CROWDSEC_IMPORT_VERSION",
+                "CROWDSEC_IMPORT_API_VERSION",
                 ["crowdsec_import", "api_version"],
                 self.config,
                 default="v2",
