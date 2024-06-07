@@ -193,29 +193,22 @@ class CrowdSecImporter:
             try:
                 # Get the current timestamp and check
                 run_start_timestamp = int(time.time())
-                current_state = self.helper.get_state()
-                if current_state is not None and "last_run" in current_state:
-                    last_run = current_state["last_run"]
-                    self.helper.log_info(
-                        "Connector last run: "
-                        + datetime.utcfromtimestamp(last_run).strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        )
-                    )
-                else:
-                    last_run = None
+                current_state = self.helper.get_state() or {}
+
+                now = datetime.utcnow().replace(microsecond=0)
+                last_run = current_state.get("last_run", 0)
+                last_run = datetime.utcfromtimestamp(last_run).replace(microsecond=0)
+
+                if last_run.year == 1970:
                     self.helper.log_info("CrowdSec import has never run")
-                # If the last_run is more than interval-1 day
-                if last_run is None or (
-                    (run_start_timestamp - last_run)
-                    > ((int(self.interval) - 1) * 60 * 60 * 24)
-                ):
+                else:
+                    self.helper.log_info(f"Connector last run: {last_run}")
+
+                # If the last_run is old enough, run the connector
+                if (now - last_run).total_seconds() > self.get_interval():
                     # Initiate the run
                     self.helper.log_info("CrowdSec import connector will run!")
-                    now = datetime.utcfromtimestamp(run_start_timestamp)
-                    friendly_name = "CrowdSec import connector run @ " + now.strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    )
+                    friendly_name = f"CrowdSec import connector run @ {now}"
                     work_id = self.helper.api.work.initiate_work(
                         self.helper.connect_id, friendly_name
                     )
@@ -514,14 +507,17 @@ class CrowdSecImporter:
                                 self.helper.log_info(
                                     f"Sending bundles took {bundle_time_taken:.4f} seconds"
                                 )
+                            if i == 0:
+                                # Store the last_run on first loop to avoid multiple runs
+                                self.helper.set_state({"last_run": run_start_timestamp})
 
                         # Store the current run_start_timestamp as a last run
+                        self.helper.set_state({"last_run": run_start_timestamp})
                         message = (
-                            "CrowdSec import connector successfully run, storing last_run as "
+                            "CrowdSec import connector successfully run, last_run stored as "
                             + str(run_start_timestamp)
                         )
                         self.helper.log_info(message)
-                        self.helper.set_state({"last_run": run_start_timestamp})
                         self.helper.api.work.to_processed(work_id, message)
                         self.helper.log_info(
                             "Last_run stored, next run in: "
@@ -534,13 +530,9 @@ class CrowdSecImporter:
                     time.sleep(60)
                 else:
                     # wait for next run
-                    new_interval = self.get_interval() - (
-                        run_start_timestamp - last_run
-                    )
+                    next_run = last_run + timedelta(seconds=self.get_interval())
                     self.helper.log_info(
-                        "Connector will not run, next run in: "
-                        + str(round(new_interval / 60 / 60 / 24, 2))
-                        + " days"
+                        f"Connector will not run, next run at: {next_run}"
                     )
                     time.sleep(60)
             except (KeyboardInterrupt, SystemExit):
