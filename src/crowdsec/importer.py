@@ -45,14 +45,12 @@ class CrowdSecImporter:
         self.crowdsec_ent_desc = "Curated Threat Intelligence Powered by the Crowd"
 
         self.crowdsec_cti_key = clean_config(
-            get_config_variable(
-                "CROWDSEC_IMPORT_KEY", ["crowdsec_import", "key"], self.config
-            )
+            get_config_variable("CROWDSEC_KEY", ["crowdsec", "key"], self.config)
         )
         self.crowdsec_api_version = clean_config(
             get_config_variable(
-                "CROWDSEC_IMPORT_API_VERSION",
-                ["crowdsec_import", "api_version"],
+                "CROWDSEC_API_VERSION",
+                ["crowdsec", "api_version"],
                 self.config,
                 default="v2",
             )
@@ -60,28 +58,28 @@ class CrowdSecImporter:
 
         self.max_tlp = clean_config(
             get_config_variable(
-                "CROWDSEC_IMPORT_MAX_TLP",
-                ["crowdsec_import", "max_tlp"],
+                "CROWDSEC_MAX_TLP",
+                ["crowdsec", "max_tlp"],
                 self.config,
                 default="TLP:AMBER",
             )
         )
         self.create_note = get_config_variable(
-            "CROWDSEC_IMPORT_CREATE_NOTE",
-            ["crowdsec_import", "create_note"],
+            "CROWDSEC_CREATE_NOTE",
+            ["crowdsec", "create_note"],
             self.config,
             default=True,
         )
         self.create_sighting = get_config_variable(
-            "CROWDSEC_IMPORT_CREATE_SIGHTING",
-            ["crowdsec_import", "create_sighting"],
+            "CROWDSEC_CREATE_SIGHTING",
+            ["crowdsec", "create_sighting"],
             self.config,
             default=True,
         )
         tlp_config = clean_config(
             get_config_variable(
-                "CROWDSEC_IMPORT_TLP",
-                ["crowdsec_import", "tlp"],
+                "CROWDSEC_TLP",
+                ["crowdsec", "tlp"],
                 self.config,
                 default=None,
             )
@@ -89,31 +87,31 @@ class CrowdSecImporter:
         self.tlp = getattr(stix2, tlp_config) if tlp_config else None
 
         self.min_delay_between_enrichments = get_config_variable(
-            "CROWDSEC_IMPORT_MIN_DELAY_BETWEEN_ENRICHMENTS",
-            ["crowdsec_import", "min_delay_between_enrichments"],
+            "CROWDSEC_MIN_DELAY_BETWEEN_ENRICHMENTS",
+            ["crowdsec", "min_delay_between_enrichments"],
             self.config,
             default=300,
             isNumber=True,
         )
 
         self.last_enrichment_date_in_description = get_config_variable(
-            "CROWDSEC_IMPORT_LAST_ENRICHMENT_DATE_IN_DESCRIPTION",
-            ["crowdsec_import", "last_enrichment_date_in_description"],
+            "CROWDSEC_LAST_ENRICHMENT_DATE_IN_DESCRIPTION",
+            ["crowdsec", "last_enrichment_date_in_description"],
             self.config,
             default=True,
         )
 
         self.create_targeted_countries_sigthings = get_config_variable(
-            "CROWDSEC_IMPORT_CREATE_TARGETED_COUNTRIES_SIGHTINGS",
-            ["crowdsec_import", "create_targeted_countries_sightings"],
+            "CROWDSEC_CREATE_TARGETED_COUNTRIES_SIGHTINGS",
+            ["crowdsec", "create_targeted_countries_sightings"],
             self.config,
             default=False,
         )
 
         raw_indicator_create_from = clean_config(
             get_config_variable(
-                "CROWDSEC_IMPORT_INDICATOR_CREATE_FROM",
-                ["crowdsec_import", "indicator_create_from"],
+                "CROWDSEC_INDICATOR_CREATE_FROM",
+                ["crowdsec", "indicator_create_from"],
                 self.config,
                 default="malicious,suspicious,known",
             )
@@ -124,7 +122,7 @@ class CrowdSecImporter:
         raw_dump_lists = clean_config(
             get_config_variable(
                 "CROWDSEC_DUMP_LISTS",
-                ["crowdsec_import", "dump_lists"],
+                ["crowdsec", "dump_lists"],
                 self.config,
                 default="fire",
             )
@@ -133,15 +131,15 @@ class CrowdSecImporter:
         self.dump_lists = raw_dump_lists.split(",")
 
         self.attack_pattern_create_from_mitre = get_config_variable(
-            "CROWDSEC_IMPORT_ATTACK_PATTERN_CREATE_FROM_MITRE",
-            ["crowdsec_import", "attack_pattern_create_from_mitre"],
+            "CROWDSEC_ATTACK_PATTERN_CREATE_FROM_MITRE",
+            ["crowdsec", "attack_pattern_create_from_mitre"],
             self.config,
             default=True,
         )
 
         self.interval = get_config_variable(
             "CROWDSEC_IMPORT_INTERVAL",
-            ["crowdsec_import", "interval"],
+            ["crowdsec", "import_interval"],
             self.config,
             True,
             2,
@@ -476,7 +474,8 @@ class CrowdSecImporter:
                                 time_from_enrichment_start / batch_index
                             ) * (total_batch_count - batch_index)
                             self.helper.log_info(
-                                f"Processing batch {batch_index}/{total_batch_count} took {batch_time_taken:.4f} seconds"
+                                f"Processing batch {batch_index}/{total_batch_count} "
+                                f"took {batch_time_taken:.4f} seconds"
                             )
                             if batch_index % 5 == 0:
                                 self.helper.log_info(

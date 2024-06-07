@@ -11,7 +11,7 @@ connector:
   log_level: 'error' # Log level (debug, info, warn, error)
   update_existing_data: false # Enable/disable update of existing data in database
 
-crowdsec_import:
+crowdsec:
   key: 'ChangeMe'
   api_version: v2 # v2 is the only supported version for now
   max_tlp: 'TLP:AMBER' # Max TLP level for observable enrichment
