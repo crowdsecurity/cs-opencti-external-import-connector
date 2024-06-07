@@ -24,6 +24,7 @@ from .helper import (
     handle_observable_description,
     verify_checksum,
     read_cti_dump,
+    handle_none_cti_value,
 )
 
 
@@ -343,8 +344,10 @@ class CrowdSecImporter:
                                 # Retrieve specific data from CTI
                                 self.helper.log_debug(f"CTI data for {ip}: {cti_data}")
                                 reputation = cti_data.get("reputation", "")
-                                mitre_techniques = cti_data.get("mitre_techniques", [])
-                                cves = cti_data.get("cves", [])
+                                mitre_techniques = handle_none_cti_value(
+                                    cti_data.get("mitre_techniques", [])
+                                )
+                                cves = handle_none_cti_value(cti_data.get("cves", []))
 
                                 indicator = None
                                 builder = CrowdSecBuilder(

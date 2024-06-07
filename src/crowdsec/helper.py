@@ -133,3 +133,19 @@ def handle_observable_description(
         "description": description,
         "time_since_last_enrichment": time_since_last_enrichment,
     }
+
+
+def handle_none_cti_value(value, default=None):
+    """Handle None CTI value. (Sometimes CTI returns None or "None" instead of an empty list.)
+
+    Args:
+        value: The value to handle.
+        default: The default value to return if the value is None.
+
+    Returns:
+        The value if it is not None, else the default value.
+    """
+
+    if default is None:
+        default = []
+    return value if value not in (None, "None") else default

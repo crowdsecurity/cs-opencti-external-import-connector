@@ -25,7 +25,7 @@ from stix2 import (
 )
 
 from .constants import MITRE_URL, CVE_REGEX, FAKE_INDICATOR_ID
-from .helper import clean_config
+from .helper import clean_config, handle_none_cti_value
 
 
 def _get_confidence_level(confidence: str) -> int:
@@ -164,11 +164,13 @@ class CrowdSecBuilder:
 
         # Parse data from CTI response
         self.ip = cti_data.get("ip", "")
-        self.behaviors = cti_data.get("behaviors", [])
-        self.references = cti_data.get("references", [])
-        self.mitre_techniques = cti_data.get("mitre_techniques", [])
-        self.attack_details = cti_data.get("attack_details", [])
-        self.cves = cti_data.get("cves", [])
+        self.behaviors = handle_none_cti_value(cti_data.get("behaviors", []))
+        self.references = handle_none_cti_value(cti_data.get("references", []))
+        self.mitre_techniques = handle_none_cti_value(
+            cti_data.get("mitre_techniques", [])
+        )
+        self.attack_details = handle_none_cti_value(cti_data.get("attack_details", []))
+        self.cves = handle_none_cti_value(cti_data.get("cves", []))
         self.reputation = cti_data.get("reputation", "")
         self.confidence = cti_data.get("confidence", "")
         self.first_seen = cti_data.get("history", {}).get("first_seen", "")
