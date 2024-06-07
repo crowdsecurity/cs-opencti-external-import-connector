@@ -193,7 +193,6 @@ class CrowdSecImporter:
                 # Get the current timestamp and check
                 run_start_timestamp = int(time.time())
                 current_state = self.helper.get_state() or {}
-
                 now = datetime.utcnow().replace(microsecond=0)
                 last_run = current_state.get("last_run", 0)
                 last_run = datetime.utcfromtimestamp(last_run).replace(microsecond=0)
@@ -283,6 +282,7 @@ class CrowdSecImporter:
                         start_enrichment_time = time.time()
                         # Initialize seen labels to avoid duplicates label creation
                         seen_labels = set()
+                        errors = []
                         for i in range(0, ip_count, self.BATCH_SIZE):
                             batch = ip_items[i : i + self.BATCH_SIZE]
                             batch_start_time = time.time()
@@ -294,180 +294,190 @@ class CrowdSecImporter:
                             batch_bundle_objects = []
                             batch_labels = []
                             for ip, cti_data in batch:
-                                start_time = time.time()
-                                counter += 1
-                                self.helper.log_debug(
-                                    f"Processing IP {counter}/{ip_count}: {ip}"
-                                )
-                                # Preparing the bundle to be sent to OpenCTI worker
-                                bundle_objects = []
-                                # Get the current timestamp for each IP processed
-                                ip_timestamp = int(start_time)
-                                # Early return if last enrichment was less than some configured time
-                                database_observable = (
-                                    self.helper.api.stix_cyber_observable.read(
-                                        filters={
-                                            "mode": "and",
-                                            "filters": [
-                                                {
-                                                    "key": "value",
-                                                    "values": [ip],
-                                                }
-                                            ],
-                                            "filterGroups": [],
-                                        }
+                                try:
+                                    start_time = time.time()
+                                    counter += 1
+                                    self.helper.log_debug(
+                                        f"Processing IP {counter}/{ip_count}: {ip}"
                                     )
-                                )
-                                handle_description = handle_observable_description(
-                                    ip_timestamp, database_observable
-                                )
-                                time_since_last_enrichment = handle_description[
-                                    "time_since_last_enrichment"
-                                ]
-                                min_delay = self.min_delay_between_enrichments
-                                if (
-                                    time_since_last_enrichment != -1
-                                    and time_since_last_enrichment < min_delay
-                                ):
-                                    message = (
-                                        f"Last enrichment was less than {min_delay} seconds ago, "
-                                        f"skipping enrichment for IP: {ip}"
-                                    )
-                                    self.helper.log_debug(message)
-                                    # Skipping the enrichment for this IP
-                                    continue
-
-                                description = None
-                                if self.last_enrichment_date_in_description:
-                                    description = handle_description["description"]
-
-                                # Retrieve specific data from CTI
-                                self.helper.log_debug(f"CTI data for {ip}: {cti_data}")
-                                reputation = cti_data.get("reputation", "")
-                                mitre_techniques = handle_none_cti_value(
-                                    cti_data.get("mitre_techniques", [])
-                                )
-                                cves = handle_none_cti_value(cti_data.get("cves", []))
-
-                                indicator = None
-                                builder = CrowdSecBuilder(
-                                    self.helper,
-                                    self.config,
-                                    cti_data=cti_data,
-                                    organisation=self.get_or_create_crowdsec_ent(),
-                                )
-                                cti_external_reference = {
-                                    "source_name": "CrowdSec CTI",
-                                    "url": urljoin(CTI_URL, ip),
-                                    "description": "CrowdSec CTI url for this IP",
-                                }
-
-                                labels = builder.handle_labels()
-                                for label in labels:
-                                    label_tuple = (label["value"], label["color"])
-                                    if label_tuple not in seen_labels:
-                                        seen_labels.add(label_tuple)
-                                        batch_labels.append(label)
-
-                                stix_observable = (
-                                    builder.upsert_observable_ipv4_address(
-                                        description=description,
-                                        labels=labels,
-                                        markings=[self.tlp] if self.tlp else None,
-                                        external_references=[cti_external_reference],
-                                        update=True if database_observable else False,
-                                    )
-                                )
-                                self.helper.log_debug(
-                                    f"STIX Observable created/updated: {stix_observable}"
-                                )
-                                # Start Bundle creation wby adding observable
-                                builder.add_to_bundle([stix_observable])
-                                observable_id = stix_observable["id"]
-                                # Initialize external reference for sightings
-                                sighting_ext_refs = [cti_external_reference]
-                                # Handle reputation
-                                if reputation in self.indicator_create_from:
-                                    pattern = f"[ipv4-addr:value = '{ip}']"
-                                    indicator = builder.add_indicator_based_on(
-                                        observable_id,
-                                        stix_observable,
-                                        pattern,
-                                        markings=[self.tlp] if self.tlp else None,
-                                    )
-                                # Handle mitre_techniques
-                                attack_patterns = []
-                                for mitre_technique in mitre_techniques:
-                                    mitre_external_reference = (
-                                        builder.create_external_ref_for_mitre(
-                                            mitre_technique
+                                    # Preparing the bundle to be sent to OpenCTI worker
+                                    bundle_objects = []
+                                    # Get the current timestamp for each IP processed
+                                    ip_timestamp = int(start_time)
+                                    # Early return if last enrichment was less than some configured time
+                                    database_observable = (
+                                        self.helper.api.stix_cyber_observable.read(
+                                            filters={
+                                                "mode": "and",
+                                                "filters": [
+                                                    {
+                                                        "key": "value",
+                                                        "values": [ip],
+                                                    }
+                                                ],
+                                                "filterGroups": [],
+                                            }
                                         )
                                     )
-                                    sighting_ext_refs.append(mitre_external_reference)
-                                    # Create attack pattern
+                                    handle_description = handle_observable_description(
+                                        ip_timestamp, database_observable
+                                    )
+                                    time_since_last_enrichment = handle_description[
+                                        "time_since_last_enrichment"
+                                    ]
+                                    min_delay = self.min_delay_between_enrichments
                                     if (
-                                        indicator
-                                        and self.attack_pattern_create_from_mitre
+                                        time_since_last_enrichment != -1
+                                        and time_since_last_enrichment < min_delay
                                     ):
-                                        attack_pattern = (
-                                            builder.add_attack_pattern_for_mitre(
-                                                mitre_technique=mitre_technique,
-                                                markings=(
-                                                    [self.tlp] if self.tlp else None
-                                                ),
-                                                indicator=indicator,
-                                                external_references=[
-                                                    mitre_external_reference
-                                                ],
+                                        message = (
+                                            f"Last enrichment was less than {min_delay} seconds ago, "
+                                            f"skipping enrichment for IP: {ip}"
+                                        )
+                                        self.helper.log_debug(message)
+                                        # Skipping the enrichment for this IP
+                                        continue
+
+                                    description = None
+                                    if self.last_enrichment_date_in_description:
+                                        description = handle_description["description"]
+
+                                    # Retrieve specific data from CTI
+                                    self.helper.log_debug(f"CTI data for {ip}: {cti_data}")
+                                    reputation = cti_data.get("reputation", "")
+                                    mitre_techniques = handle_none_cti_value(
+                                        cti_data.get("mitre_techniques", [])
+                                    )
+                                    cves = handle_none_cti_value(cti_data.get("cves", []))
+
+                                    indicator = None
+                                    builder = CrowdSecBuilder(
+                                        self.helper,
+                                        self.config,
+                                        cti_data=cti_data,
+                                        organisation=self.get_or_create_crowdsec_ent(),
+                                    )
+                                    cti_external_reference = {
+                                        "source_name": "CrowdSec CTI",
+                                        "url": urljoin(CTI_URL, ip),
+                                        "description": "CrowdSec CTI url for this IP",
+                                    }
+
+                                    labels = builder.handle_labels()
+                                    for label in labels:
+                                        label_tuple = (label["value"], label["color"])
+                                        if label_tuple not in seen_labels:
+                                            seen_labels.add(label_tuple)
+                                            batch_labels.append(label)
+
+                                    stix_observable = (
+                                        builder.upsert_observable_ipv4_address(
+                                            description=description,
+                                            labels=labels,
+                                            markings=[self.tlp] if self.tlp else None,
+                                            external_references=[cti_external_reference],
+                                            update=True if database_observable else False,
+                                        )
+                                    )
+                                    self.helper.log_debug(
+                                        f"STIX Observable created/updated: {stix_observable}"
+                                    )
+                                    # Start Bundle creation wby adding observable
+                                    builder.add_to_bundle([stix_observable])
+                                    observable_id = stix_observable["id"]
+                                    # Initialize external reference for sightings
+                                    sighting_ext_refs = [cti_external_reference]
+                                    # Handle reputation
+                                    if reputation in self.indicator_create_from:
+                                        pattern = f"[ipv4-addr:value = '{ip}']"
+                                        indicator = builder.add_indicator_based_on(
+                                            observable_id,
+                                            stix_observable,
+                                            pattern,
+                                            markings=[self.tlp] if self.tlp else None,
+                                        )
+                                    # Handle mitre_techniques
+                                    attack_patterns = []
+                                    for mitre_technique in mitre_techniques:
+                                        mitre_external_reference = (
+                                            builder.create_external_ref_for_mitre(
+                                                mitre_technique
                                             )
                                         )
-                                        attack_patterns.append(attack_pattern.id)
-                                # Handle CVEs
-                                for cve in cves:
-                                    # Create vulnerability
-                                    builder.add_vulnerability_from_cve(
-                                        cve,
+                                        sighting_ext_refs.append(mitre_external_reference)
+                                        # Create attack pattern
+                                        if (
+                                            indicator
+                                            and self.attack_pattern_create_from_mitre
+                                        ):
+                                            attack_pattern = (
+                                                builder.add_attack_pattern_for_mitre(
+                                                    mitre_technique=mitre_technique,
+                                                    markings=(
+                                                        [self.tlp] if self.tlp else None
+                                                    ),
+                                                    indicator=indicator,
+                                                    external_references=[
+                                                        mitre_external_reference
+                                                    ],
+                                                )
+                                            )
+                                            attack_patterns.append(attack_pattern.id)
+                                    # Handle CVEs
+                                    for cve in cves:
+                                        # Create vulnerability
+                                        builder.add_vulnerability_from_cve(
+                                            cve,
+                                            markings=[self.tlp] if self.tlp else None,
+                                            observable_id=observable_id,
+                                        )
+                                    # Handle target countries
+                                    builder.handle_target_countries(
+                                        attack_patterns=attack_patterns,
                                         markings=[self.tlp] if self.tlp else None,
-                                        observable_id=observable_id,
+                                        observable_id=(
+                                            observable_id
+                                            if self.create_targeted_countries_sigthings
+                                            else None
+                                        ),
                                     )
-                                # Handle target countries
-                                builder.handle_target_countries(
-                                    attack_patterns=attack_patterns,
-                                    markings=[self.tlp] if self.tlp else None,
-                                    observable_id=(
-                                        observable_id
-                                        if self.create_targeted_countries_sigthings
-                                        else None
-                                    ),
-                                )
-                                # Add note
-                                if self.create_note:
-                                    builder.add_note(
-                                        observable_id=stix_observable.id,
-                                        markings=[self.tlp] if self.tlp else None,
-                                    )
-                                # Create sightings relationship between CrowdSec organisation and observable
-                                if self.create_sighting:
-                                    builder.add_sighting(
-                                        observable_id=stix_observable.id,
-                                        markings=[self.tlp] if self.tlp else None,
-                                        sighting_ext_refs=sighting_ext_refs,
-                                        indicator=indicator if indicator else None,
-                                    )
+                                    # Add note
+                                    if self.create_note:
+                                        builder.add_note(
+                                            observable_id=stix_observable.id,
+                                            markings=[self.tlp] if self.tlp else None,
+                                        )
+                                    # Create sightings relationship between CrowdSec organisation and observable
+                                    if self.create_sighting:
+                                        builder.add_sighting(
+                                            observable_id=stix_observable.id,
+                                            markings=[self.tlp] if self.tlp else None,
+                                            sighting_ext_refs=sighting_ext_refs,
+                                            indicator=indicator if indicator else None,
+                                        )
 
-                                bundle_objects.extend(builder.get_bundle())
-                                batch_bundle_objects.extend(bundle_objects)
+                                    bundle_objects.extend(builder.get_bundle())
+                                    batch_bundle_objects.extend(bundle_objects)
 
-                                end_time = time.time()
-                                time_taken = end_time - start_time
-                                self.helper.log_debug(
-                                    f"Processing IP {counter}/{ip_count}: {ip} took {time_taken:.4f} seconds"
-                                )
+                                    end_time = time.time()
+                                    time_taken = end_time - start_time
+                                    self.helper.log_debug(
+                                        f"Processing IP {counter}/{ip_count}: {ip} took {time_taken:.4f} seconds"
+                                    )
+                                except Exception as e:
+                                    message = f"Error processing IP {counter}/{ip_count}: {ip}: {str(e)}"
+                                    self.helper.log_error(message)
+                                    errors.append(message)
                             if batch_labels:
-                                for label in batch_labels:
-                                    self.helper.api.label.read_or_create_unchecked(
-                                        value=label["value"], color=label["color"]
-                                    )
+                                try:
+                                    for label in batch_labels:
+                                        self.helper.api.label.read_or_create_unchecked(
+                                            value=label["value"], color=label["color"]
+                                        )
+                                except Exception as e:
+                                    message = f"Error creating labels: {str(e)}"
+                                    self.helper.log_error(message)
+                                    errors.append(message)
                             batch_end_time = time.time()
                             batch_time_taken = batch_end_time - batch_start_time
                             time_from_enrichment_start = (
@@ -489,26 +499,31 @@ class CrowdSecImporter:
                                     )
                                 )
                             if batch_bundle_objects:
-                                bundle_start_time = time.time()
-                                self.helper.log_info(
-                                    f"Start sending {len(batch_bundle_objects)} bundles to to OpenCTI"
-                                )
-                                # bundle = stix2.Bundle(batch_bundle_objects, allow_custom=True)
-                                # bundle_json = bundle.serialize()
-                                bundle_json = self.helper.stix2_create_bundle(
-                                    batch_bundle_objects
-                                )
-                                # Sending the bundle
-                                self.helper.send_stix2_bundle(
-                                    bundle_json,
-                                    update=self.update_existing_data,
-                                    work_id=work_id,
-                                )
-                                bundle_end_time = time.time()
-                                bundle_time_taken = bundle_end_time - bundle_start_time
-                                self.helper.log_info(
-                                    f"Sending bundles took {bundle_time_taken:.4f} seconds"
-                                )
+                                try:
+                                    bundle_start_time = time.time()
+                                    self.helper.log_info(
+                                        f"Start sending {len(batch_bundle_objects)} bundles to to OpenCTI"
+                                    )
+                                    # bundle = stix2.Bundle(batch_bundle_objects, allow_custom=True)
+                                    # bundle_json = bundle.serialize()
+                                    bundle_json = self.helper.stix2_create_bundle(
+                                        batch_bundle_objects
+                                    )
+                                    # Sending the bundle
+                                    self.helper.send_stix2_bundle(
+                                        bundle_json,
+                                        update=self.update_existing_data,
+                                        work_id=work_id,
+                                    )
+                                    bundle_end_time = time.time()
+                                    bundle_time_taken = bundle_end_time - bundle_start_time
+                                    self.helper.log_info(
+                                        f"Sending bundles took {bundle_time_taken:.4f} seconds"
+                                    )
+                                except Exception as e:
+                                    message = f"Error sending bundles: {str(e)}"
+                                    self.helper.log_error(message)
+                                    errors.append(message)
                             if i == 0:
                                 # Store the last_run on first loop to avoid multiple runs
                                 self.helper.set_state({"last_run": run_start_timestamp})
@@ -520,6 +535,8 @@ class CrowdSecImporter:
                             + str(run_start_timestamp)
                         )
                         self.helper.log_info(message)
+                        for error in errors:
+                            self.helper.api.work.to_processed(work_id, error, in_error=True)
                         self.helper.api.work.to_processed(work_id, message)
                         self.helper.log_info(
                             "Last_run stored, next run in: "
@@ -527,6 +544,10 @@ class CrowdSecImporter:
                             + " days"
                         )
                     except Exception as e:
+                        message = f"Error running CrowdSec import connector: {str(e)}"
+                        self.helper.api.work.to_processed(
+                            work_id, message, in_error=True
+                        )
                         self.helper.log_error(str(e))
 
                     time.sleep(60)
