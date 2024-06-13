@@ -103,7 +103,7 @@ class CrowdSecImporter:
             default=True,
         )
 
-        self.create_targeted_countries_sigthings = get_config_variable(
+        self.create_targeted_countries_sightings = get_config_variable(
             "CROWDSEC_CREATE_TARGETED_COUNTRIES_SIGHTINGS",
             ["crowdsec", "create_targeted_countries_sightings"],
             self.config,
@@ -144,7 +144,7 @@ class CrowdSecImporter:
             ["crowdsec", "import_interval"],
             self.config,
             True,
-            2,
+            1,
         )
         self.update_existing_data = get_config_variable(
             "CONNECTOR_UPDATE_EXISTING_DATA",
@@ -336,6 +336,26 @@ class CrowdSecImporter:
                                             }
                                         )
                                     )
+
+                                    tlp = "TLP:WHITE"
+                                    for marking_definition in database_observable[
+                                        "objectMarking"
+                                    ]:
+                                        if (
+                                            marking_definition["definition_type"]
+                                            == "TLP"
+                                        ):
+                                            tlp = marking_definition["definition"]
+
+                                    if not OpenCTIConnectorHelper.check_max_tlp(
+                                        tlp, self.max_tlp
+                                    ):
+                                        self.helper.log_info(
+                                            f"Skipping enrichment for IP {ip}: "
+                                            f"Observable TLP ({tlp}) is greater than MAX TLP ({self.max_tlp})"
+                                        )
+                                        continue
+
                                     handle_description = handle_observable_description(
                                         ip_timestamp, database_observable
                                     )
@@ -463,7 +483,7 @@ class CrowdSecImporter:
                                         markings=[self.tlp] if self.tlp else None,
                                         observable_id=(
                                             observable_id
-                                            if self.create_targeted_countries_sigthings
+                                            if self.create_targeted_countries_sightings
                                             else None
                                         ),
                                     )
