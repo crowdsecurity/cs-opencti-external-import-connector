@@ -179,6 +179,14 @@ class CrowdSecImporter:
     def format_duration(seconds: int) -> str:
         return str(timedelta(seconds=seconds))
 
+    @staticmethod
+    def convert_seconds(seconds):
+        days = seconds // 86400
+        hours = (seconds % 86400) // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        return f"{days} days {hours} hours {minutes} mins {secs} secs"
+
     def get_or_create_crowdsec_ent(self) -> Identity:
         if getattr(self, "crowdsec_ent", None) is not None:
             return self.crowdsec_ent
@@ -212,8 +220,7 @@ class CrowdSecImporter:
                     # Flag current run as last run to avoid multiple concurrent runs
                     self.helper.set_state({"last_run": run_start_timestamp})
                 else:
-                    last_run_with_tz = datetime.fromtimestamp(last_run_state).replace(microsecond=0)
-                    self.helper.log_info(f"Connector last run: {last_run_with_tz}")
+                    self.helper.log_info(f"Connector last run: {last_run}+00:00")
 
                 # If the last_run is old enough, run the connector
                 if (now - last_run).total_seconds() > self.get_interval():
@@ -601,12 +608,10 @@ class CrowdSecImporter:
                             )
                         self.helper.api.work.to_processed(work_id, message)
                         time_from_run_start = int(time.time()) - run_start_timestamp
-                        next_run = self.get_interval() - time_from_run_start
-                        if next_run > 0:
+                        next_run_in = self.get_interval() - time_from_run_start
+                        if next_run_in > 0:
                             self.helper.log_info(
-                                "Next run in: "
-                                + str(round(next_run / 60 / 60 , 2))
-                                + " hours"
+                                f"Next run in: {self.convert_seconds(next_run_in)}"
                             )
                     except Exception as e:
                         message = f"Error running CrowdSec import connector: {str(e)}"
@@ -620,7 +625,7 @@ class CrowdSecImporter:
                     # wait for next run
                     next_run = last_run + timedelta(seconds=self.get_interval())
                     self.helper.log_info(
-                        f"Connector will not run, next run at: {next_run}"
+                        f"Connector will not run, next run at: {next_run}+00:00"
                     )
                     time.sleep(60)
             except (KeyboardInterrupt, SystemExit):
