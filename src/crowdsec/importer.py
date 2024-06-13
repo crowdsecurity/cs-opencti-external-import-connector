@@ -213,7 +213,9 @@ class CrowdSecImporter:
                 current_state = self.helper.get_state() or {}
                 now = datetime.utcnow().replace(microsecond=0)
                 last_run_state = current_state.get("last_run", 0)
-                last_run = datetime.utcfromtimestamp(last_run_state).replace(microsecond=0)
+                last_run = datetime.utcfromtimestamp(last_run_state).replace(
+                    microsecond=0
+                )
 
                 if last_run.year == 1970:
                     self.helper.log_info("CrowdSec import has never run")
