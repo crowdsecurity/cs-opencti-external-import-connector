@@ -58,6 +58,14 @@ class CrowdSecImporter:
             )
         )
 
+        self.enrichment_threshold_per_import = get_config_variable(
+            "CROWDSEC_ENRICHMENT_THRESHOLD_PER_IMPORT",
+            ["crowdsec", "enrichment_threshold_per_import"],
+            self.config,
+            default=10000,
+            isNumber=True,
+        )
+
         self.max_tlp = clean_config(
             get_config_variable(
                 "CROWDSEC_MAX_TLP",
@@ -144,7 +152,7 @@ class CrowdSecImporter:
             ["crowdsec", "import_interval"],
             self.config,
             True,
-            1,
+            24,
         )
         self.update_existing_data = get_config_variable(
             "CONNECTOR_UPDATE_EXISTING_DATA",
@@ -164,7 +172,7 @@ class CrowdSecImporter:
         )
 
     def get_interval(self):
-        return int(self.interval) * 60 * 60 * 24
+        return int(self.interval) * 60 * 60
 
     @staticmethod
     def format_duration(seconds: int) -> str:
@@ -194,22 +202,14 @@ class CrowdSecImporter:
                 # Get the current timestamp and check
                 run_start_timestamp = int(time.time())
                 current_state = self.helper.get_state() or {}
-                # Check is_running to avoid multiple runs
-                is_running = current_state.get("is_running", False)
-                if is_running:
-                    self.helper.log_info(
-                        "CrowdSec import connector is already running, waiting for the current run to complete."
-                    )
-                    time.sleep(60)
-                    continue
-                else:
-                    self.helper.set_state({"is_running": True})
                 now = datetime.utcnow().replace(microsecond=0)
                 last_run = current_state.get("last_run", 0)
                 last_run = datetime.utcfromtimestamp(last_run).replace(microsecond=0)
 
                 if last_run.year == 1970:
                     self.helper.log_info("CrowdSec import has never run")
+                    # Flag current run as last run to avoid multiple concurrent runs
+                    self.helper.set_state({"last_run": run_start_timestamp})
                 else:
                     self.helper.log_info(f"Connector last run: {last_run}")
 
@@ -294,7 +294,12 @@ class CrowdSecImporter:
                         # Initialize seen labels to avoid duplicates label creation
                         seen_labels = set()
                         errors = []
+                        enrichments_count = 0
+                        enrichment_threshold = self.enrichment_threshold_per_import
+                        exit_batch_loop = False
                         for i in range(0, ip_count, self.BATCH_SIZE):
+                            if exit_batch_loop:
+                                break
                             batch = ip_items[i : i + self.BATCH_SIZE]
                             batch_start_time = time.time()
                             batch_index = i // self.BATCH_SIZE + 1
@@ -306,6 +311,12 @@ class CrowdSecImporter:
                             batch_labels = []
                             for ip, cti_data in batch:
                                 try:
+                                    if enrichments_count >= enrichment_threshold:
+                                        self.helper.log_info(
+                                            f"Enrichment threshold reached: {enrichment_threshold}"
+                                        )
+                                        exit_batch_loop = True
+                                        break
                                     start_time = time.time()
                                     counter += 1
                                     self.helper.log_debug(
@@ -337,24 +348,25 @@ class CrowdSecImporter:
                                         )
                                     )
 
-                                    tlp = "TLP:WHITE"
-                                    for marking_definition in database_observable[
-                                        "objectMarking"
-                                    ]:
-                                        if (
-                                            marking_definition["definition_type"]
-                                            == "TLP"
-                                        ):
-                                            tlp = marking_definition["definition"]
+                                    if database_observable:
+                                        tlp = "TLP:WHITE"
+                                        for marking_definition in database_observable[
+                                            "objectMarking"
+                                        ]:
+                                            if (
+                                                marking_definition["definition_type"]
+                                                == "TLP"
+                                            ):
+                                                tlp = marking_definition["definition"]
 
-                                    if not OpenCTIConnectorHelper.check_max_tlp(
-                                        tlp, self.max_tlp
-                                    ):
-                                        self.helper.log_info(
-                                            f"Skipping enrichment for IP {ip}: "
-                                            f"Observable TLP ({tlp}) is greater than MAX TLP ({self.max_tlp})"
-                                        )
-                                        continue
+                                        if not OpenCTIConnectorHelper.check_max_tlp(
+                                            tlp, self.max_tlp
+                                        ):
+                                            self.helper.log_info(
+                                                f"Skipping enrichment for IP {ip}: "
+                                                f"Observable TLP ({tlp}) is greater than MAX TLP ({self.max_tlp})"
+                                            )
+                                            continue
 
                                     handle_description = handle_observable_description(
                                         ip_timestamp, database_observable
@@ -504,6 +516,7 @@ class CrowdSecImporter:
 
                                     bundle_objects.extend(builder.get_bundle())
                                     batch_bundle_objects.extend(bundle_objects)
+                                    enrichments_count += 1
 
                                     end_time = time.time()
                                     time_taken = end_time - start_time
@@ -575,8 +588,6 @@ class CrowdSecImporter:
 
                         # Store the current run_start_timestamp as a last run
                         self.helper.set_state({"last_run": run_start_timestamp})
-                        # Flag the connector as not running
-                        self.helper.set_state({"is_running": False})
                         message = (
                             "CrowdSec import connector successfully run, last_run stored as "
                             + str(run_start_timestamp)
@@ -598,7 +609,6 @@ class CrowdSecImporter:
                             work_id, message, in_error=True
                         )
                         self.helper.log_error(str(e))
-                        self.helper.set_state({"is_running": False})
 
                     time.sleep(60)
                 else:
@@ -611,10 +621,8 @@ class CrowdSecImporter:
             except (KeyboardInterrupt, SystemExit):
                 delete_folder(sub_folder)
                 self.helper.log_info("CrowdSec import connector stop")
-                self.helper.set_state({"is_running": False})
                 exit(0)
             except Exception as e:
                 delete_folder(sub_folder)
                 self.helper.log_error(str(e))
-                self.helper.set_state({"is_running": False})
                 time.sleep(60)
