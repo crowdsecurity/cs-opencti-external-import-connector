@@ -4,7 +4,7 @@ import os
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 from urllib.parse import urljoin
 
 import stix2
@@ -170,6 +170,8 @@ class CrowdSecImporter:
             url=self.api_base_url,
             api_key=self.crowdsec_cti_key,
         )
+        self.errors = []
+        self.seen_labels = set()
 
     def get_interval(self):
         """Get the interval in seconds."""
@@ -202,6 +204,194 @@ class CrowdSecImporter:
         else:
             self.crowdsec_ent = crowdsec_ent
         return self.crowdsec_ent
+
+    def _enrich_ip(
+        self,
+        ip: str,
+        cti_data: Dict,
+        batch_labels: List,
+        batch_bundle_objects: List,
+    ) -> bool:
+        ip_version = get_ip_version(ip)
+        if ip_version not in [4, 6]:
+            message = f"IP {ip} is not a valid IPv4 or IPv6 address"
+            self.helper.log_error(message)
+            self.errors.append(message)
+            return False
+        # Preparing the bundle to be sent to OpenCTI worker
+        bundle_objects = []
+        # Early return if last enrichment was less than some configured time
+        database_observable = self.helper.api.stix_cyber_observable.read(
+            filters={
+                "mode": "and",
+                "filters": [
+                    {
+                        "key": "value",
+                        "values": [ip],
+                    }
+                ],
+                "filterGroups": [],
+            }
+        )
+
+        if database_observable:
+            tlp = "TLP:WHITE"
+            for marking_definition in database_observable["objectMarking"]:
+                if marking_definition["definition_type"] == "TLP":
+                    tlp = marking_definition["definition"]
+
+            if not OpenCTIConnectorHelper.check_max_tlp(tlp, self.max_tlp):
+                self.helper.log_info(
+                    f"Skipping enrichment for IP {ip}: "
+                    f"Observable TLP ({tlp}) is greater than MAX TLP ({self.max_tlp})"
+                )
+                return False
+        ip_timestamp = int(time.time())
+        handle_description = handle_observable_description(
+            ip_timestamp, database_observable
+        )
+        time_since_last_enrichment = handle_description["time_since_last_enrichment"]
+        min_delay = self.min_delay_between_enrichments
+        if time_since_last_enrichment != -1 and time_since_last_enrichment < min_delay:
+            message = (
+                f"Last enrichment was less than {min_delay} seconds ago, "
+                f"skipping enrichment for IP: {ip}"
+            )
+            self.helper.log_info(message)
+            # Skipping the enrichment for this IP
+            return False
+
+        description = None
+        if self.last_enrichment_date_in_description:
+            description = handle_description["description"]
+
+        # Retrieve specific data from CTI
+        self.helper.log_debug(f"CTI data for {ip}: {cti_data}")
+        reputation = cti_data.get("reputation", "")
+        mitre_techniques = handle_none_cti_value(cti_data.get("mitre_techniques", []))
+        cves = handle_none_cti_value(cti_data.get("cves", []))
+
+        indicator = None
+        builder = CrowdSecBuilder(
+            self.helper,
+            self.config,
+            cti_data=cti_data,
+            organisation=self.get_or_create_crowdsec_ent(),
+        )
+        cti_external_reference = {
+            "source_name": "CrowdSec CTI",
+            "url": urljoin(CTI_URL, ip),
+            "description": "CrowdSec CTI url for this IP",
+        }
+
+        labels = builder.handle_labels()
+        for label in labels:
+            label_tuple = (label["value"], label["color"])
+            if label_tuple not in self.seen_labels:
+                self.seen_labels.add(label_tuple)
+                batch_labels.append(label)
+
+        stix_observable = builder.upsert_observable(
+            ip_version=ip_version,
+            description=description,
+            labels=labels,
+            markings=[self.tlp] if self.tlp else None,
+            external_references=[cti_external_reference],
+            update=True if database_observable else False,
+        )
+        self.helper.log_debug(f"STIX Observable created/updated: {stix_observable}")
+        # Start Bundle creation wby adding observable
+        builder.add_to_bundle([stix_observable])
+        observable_id = stix_observable["id"]
+        # Initialize external reference for sightings
+        sighting_ext_refs = [cti_external_reference]
+        # Handle reputation
+        if reputation in self.indicator_create_from:
+            pattern = (
+                f"[ipv4-addr:value = '{ip}']"
+                if ip_version == 4
+                else f"[ipv6-addr:value = '{ip}']"
+            )
+            indicator = builder.add_indicator_based_on(
+                observable_id,
+                stix_observable,
+                pattern,
+                markings=[self.tlp] if self.tlp else None,
+            )
+        # Handle mitre_techniques
+        attack_patterns = []
+        for mitre_technique in mitre_techniques:
+            mitre_external_reference = builder.create_external_ref_for_mitre(
+                mitre_technique
+            )
+            sighting_ext_refs.append(mitre_external_reference)
+            # Create attack pattern
+            if indicator and self.attack_pattern_create_from_mitre:
+                attack_pattern = builder.add_attack_pattern_for_mitre(
+                    mitre_technique=mitre_technique,
+                    markings=([self.tlp] if self.tlp else None),
+                    indicator=indicator,
+                    external_references=[mitre_external_reference],
+                )
+                attack_patterns.append(attack_pattern.id)
+        # Handle CVEs
+        for cve in cves:
+            # Create vulnerability
+            builder.add_vulnerability_from_cve(
+                cve,
+                markings=[self.tlp] if self.tlp else None,
+                observable_id=observable_id,
+            )
+        # Handle target countries
+        builder.handle_target_countries(
+            attack_patterns=attack_patterns,
+            markings=[self.tlp] if self.tlp else None,
+            observable_id=(
+                observable_id if self.create_targeted_countries_sightings else None
+            ),
+        )
+        # Add note
+        if self.create_note:
+            builder.add_note(
+                observable_id=stix_observable.id,
+                markings=[self.tlp] if self.tlp else None,
+            )
+        # Create sightings relationship between CrowdSec organisation and observable
+        if self.create_sighting:
+            builder.add_sighting(
+                observable_id=stix_observable.id,
+                markings=[self.tlp] if self.tlp else None,
+                sighting_ext_refs=sighting_ext_refs,
+                indicator=indicator if indicator else None,
+            )
+
+        bundle_objects.extend(builder.get_bundle())
+        batch_bundle_objects.extend(bundle_objects)
+        return True
+
+    def _extract_ips(self, dump: Dict, sub_folder: str) -> Dict:
+        ip_list = {}
+        for dump_list in self.dump_lists:
+            dump_file = os.path.join(sub_folder, f"{dump_list}.tar.gz")
+            list_info = dump.get(dump_list, {})
+            url = list_info.get("url", "")
+            checksum = list_info.get("checksum")
+            checksum_type = list_info.get("checksum_type")
+            if url:
+                self.helper.log_debug(f"Downloading {dump_list} file from {url} ...")
+                self.client.download_file(url, dump_file)
+                if not verify_checksum(dump_file, checksum, checksum_type):
+                    raise Exception(
+                        f"Checksum verification failed for {dump_list} file"
+                    )
+                self.helper.log_debug(f"Checksum OK.  Reading {dump_list} file ...")
+                dump_ips = read_cti_dump(dump_file)
+                self.helper.log_debug(f"{dump_list} IPs count: {len(dump_ips)}")
+                ip_list = {**ip_list, **dump_ips}
+            else:
+                self.helper.log_debug(f"No URL found for {dump_list}")
+
+        return ip_list
 
     def run(self) -> None:
         self.helper.log_info("CrowdSec external import running ...")
@@ -258,35 +448,7 @@ class CrowdSecImporter:
                                 f"Temporary {sub_folder} folder created"
                             )
 
-                        ip_list = {}
-                        for dump_list in self.dump_lists:
-                            dump_file = os.path.join(sub_folder, f"{dump_list}.tar.gz")
-                            list_info = dump.get(dump_list, {})
-                            url = list_info.get("url", "")
-                            checksum = list_info.get("checksum")
-                            checksum_type = list_info.get("checksum_type")
-                            if url:
-                                self.helper.log_debug(
-                                    f"Downloading {dump_list} file from {url} ..."
-                                )
-                                self.client.download_file(url, dump_file)
-                                if not verify_checksum(
-                                    dump_file, checksum, checksum_type
-                                ):
-                                    raise Exception(
-                                        f"Checksum verification failed for {dump_list} file"
-                                    )
-                                self.helper.log_debug(
-                                    f"Checksum OK.  Reading {dump_list} file ..."
-                                )
-                                dump_ips = read_cti_dump(dump_file)
-                                self.helper.log_debug(
-                                    f"{dump_list} IPs count: {len(dump_ips)}"
-                                )
-                                ip_list = {**ip_list, **dump_ips}
-                            else:
-                                self.helper.log_debug(f"No URL found for {dump_list}")
-
+                        ip_list = self._extract_ips(dump, sub_folder)
                         ip_count = len(ip_list)
                         self.helper.log_info(f"Total IPs count: {ip_count}")
 
@@ -303,8 +465,8 @@ class CrowdSecImporter:
                         ) // self.BATCH_SIZE
                         start_enrichment_time = time.time()
                         # Initialize seen labels to avoid duplicates label creation
-                        seen_labels = set()
-                        errors = []
+                        self.seen_labels = set()
+                        self.errors = []
                         enrichments_count = 0
                         enrichment_threshold = self.enrichment_threshold_per_import
                         exit_batch_loop = False
@@ -328,216 +490,20 @@ class CrowdSecImporter:
                                         )
                                         exit_batch_loop = True
                                         break
-                                    start_time = time.time()
                                     counter += 1
-                                    self.helper.log_debug(
-                                        f"Processing IP {counter}/{ip_count}: {ip}"
-                                    )
-                                    ip_version = get_ip_version(ip)
-                                    if ip_version not in [4, 6]:
-                                        message = f"IP {ip} is not a valid IPv4 or IPv6 address"
-                                        self.helper.log_error(message)
-                                        errors.append(message)
-                                        continue
-                                    # Preparing the bundle to be sent to OpenCTI worker
-                                    bundle_objects = []
-                                    # Get the current timestamp for each IP processed
-                                    ip_timestamp = int(start_time)
-                                    # Early return if last enrichment was less than some configured time
-                                    database_observable = (
-                                        self.helper.api.stix_cyber_observable.read(
-                                            filters={
-                                                "mode": "and",
-                                                "filters": [
-                                                    {
-                                                        "key": "value",
-                                                        "values": [ip],
-                                                    }
-                                                ],
-                                                "filterGroups": [],
-                                            }
-                                        )
-                                    )
-
-                                    if database_observable:
-                                        tlp = "TLP:WHITE"
-                                        for marking_definition in database_observable[
-                                            "objectMarking"
-                                        ]:
-                                            if (
-                                                marking_definition["definition_type"]
-                                                == "TLP"
-                                            ):
-                                                tlp = marking_definition["definition"]
-
-                                        if not OpenCTIConnectorHelper.check_max_tlp(
-                                            tlp, self.max_tlp
-                                        ):
-                                            self.helper.log_info(
-                                                f"Skipping enrichment for IP {ip}: "
-                                                f"Observable TLP ({tlp}) is greater than MAX TLP ({self.max_tlp})"
-                                            )
-                                            continue
-
-                                    handle_description = handle_observable_description(
-                                        ip_timestamp, database_observable
-                                    )
-                                    time_since_last_enrichment = handle_description[
-                                        "time_since_last_enrichment"
-                                    ]
-                                    min_delay = self.min_delay_between_enrichments
-                                    if (
-                                        time_since_last_enrichment != -1
-                                        and time_since_last_enrichment < min_delay
+                                    # Enrich IP
+                                    if self._enrich_ip(
+                                        ip,
+                                        cti_data,
+                                        batch_labels,
+                                        batch_bundle_objects,
                                     ):
-                                        message = (
-                                            f"Last enrichment was less than {min_delay} seconds ago, "
-                                            f"skipping enrichment for IP: {ip}"
-                                        )
-                                        self.helper.log_debug(message)
-                                        # Skipping the enrichment for this IP
-                                        continue
-
-                                    description = None
-                                    if self.last_enrichment_date_in_description:
-                                        description = handle_description["description"]
-
-                                    # Retrieve specific data from CTI
-                                    self.helper.log_debug(
-                                        f"CTI data for {ip}: {cti_data}"
-                                    )
-                                    reputation = cti_data.get("reputation", "")
-                                    mitre_techniques = handle_none_cti_value(
-                                        cti_data.get("mitre_techniques", [])
-                                    )
-                                    cves = handle_none_cti_value(
-                                        cti_data.get("cves", [])
-                                    )
-
-                                    indicator = None
-                                    builder = CrowdSecBuilder(
-                                        self.helper,
-                                        self.config,
-                                        cti_data=cti_data,
-                                        organisation=self.get_or_create_crowdsec_ent(),
-                                    )
-                                    cti_external_reference = {
-                                        "source_name": "CrowdSec CTI",
-                                        "url": urljoin(CTI_URL, ip),
-                                        "description": "CrowdSec CTI url for this IP",
-                                    }
-
-                                    labels = builder.handle_labels()
-                                    for label in labels:
-                                        label_tuple = (label["value"], label["color"])
-                                        if label_tuple not in seen_labels:
-                                            seen_labels.add(label_tuple)
-                                            batch_labels.append(label)
-
-                                    stix_observable = builder.upsert_observable(
-                                        ip_version=ip_version,
-                                        description=description,
-                                        labels=labels,
-                                        markings=[self.tlp] if self.tlp else None,
-                                        external_references=[cti_external_reference],
-                                        update=True if database_observable else False,
-                                    )
-                                    self.helper.log_debug(
-                                        f"STIX Observable created/updated: {stix_observable}"
-                                    )
-                                    # Start Bundle creation wby adding observable
-                                    builder.add_to_bundle([stix_observable])
-                                    observable_id = stix_observable["id"]
-                                    # Initialize external reference for sightings
-                                    sighting_ext_refs = [cti_external_reference]
-                                    # Handle reputation
-                                    if reputation in self.indicator_create_from:
-                                        pattern = (
-                                            f"[ipv4-addr:value = '{ip}']"
-                                            if ip_version == 4
-                                            else f"[ipv6-addr:value = '{ip}']"
-                                        )
-                                        indicator = builder.add_indicator_based_on(
-                                            observable_id,
-                                            stix_observable,
-                                            pattern,
-                                            markings=[self.tlp] if self.tlp else None,
-                                        )
-                                    # Handle mitre_techniques
-                                    attack_patterns = []
-                                    for mitre_technique in mitre_techniques:
-                                        mitre_external_reference = (
-                                            builder.create_external_ref_for_mitre(
-                                                mitre_technique
-                                            )
-                                        )
-                                        sighting_ext_refs.append(
-                                            mitre_external_reference
-                                        )
-                                        # Create attack pattern
-                                        if (
-                                            indicator
-                                            and self.attack_pattern_create_from_mitre
-                                        ):
-                                            attack_pattern = (
-                                                builder.add_attack_pattern_for_mitre(
-                                                    mitre_technique=mitre_technique,
-                                                    markings=(
-                                                        [self.tlp] if self.tlp else None
-                                                    ),
-                                                    indicator=indicator,
-                                                    external_references=[
-                                                        mitre_external_reference
-                                                    ],
-                                                )
-                                            )
-                                            attack_patterns.append(attack_pattern.id)
-                                    # Handle CVEs
-                                    for cve in cves:
-                                        # Create vulnerability
-                                        builder.add_vulnerability_from_cve(
-                                            cve,
-                                            markings=[self.tlp] if self.tlp else None,
-                                            observable_id=observable_id,
-                                        )
-                                    # Handle target countries
-                                    builder.handle_target_countries(
-                                        attack_patterns=attack_patterns,
-                                        markings=[self.tlp] if self.tlp else None,
-                                        observable_id=(
-                                            observable_id
-                                            if self.create_targeted_countries_sightings
-                                            else None
-                                        ),
-                                    )
-                                    # Add note
-                                    if self.create_note:
-                                        builder.add_note(
-                                            observable_id=stix_observable.id,
-                                            markings=[self.tlp] if self.tlp else None,
-                                        )
-                                    # Create sightings relationship between CrowdSec organisation and observable
-                                    if self.create_sighting:
-                                        builder.add_sighting(
-                                            observable_id=stix_observable.id,
-                                            markings=[self.tlp] if self.tlp else None,
-                                            sighting_ext_refs=sighting_ext_refs,
-                                            indicator=indicator if indicator else None,
-                                        )
-
-                                    bundle_objects.extend(builder.get_bundle())
-                                    batch_bundle_objects.extend(bundle_objects)
-                                    enrichments_count += 1
-
-                                    end_time = time.time()
-                                    time_taken = end_time - start_time
-                                    self.helper.log_debug(
-                                        f"Processing IP {counter}/{ip_count}: {ip} took {time_taken:.4f} seconds"
-                                    )
+                                        enrichments_count += 1
                                 except Exception as e:
-                                    message = f"Error processing IP {counter}/{ip_count}: {ip}: {str(e)}"
+                                    message = f"Error processing IP {ip}: {str(e)}"
                                     self.helper.log_error(message)
-                                    errors.append(message)
+                                    self.errors.append(message)
+                            # Create labels with colors (not possible to set colors in a bundle object)
                             if batch_labels:
                                 try:
                                     for label in batch_labels:
@@ -547,25 +513,33 @@ class CrowdSecImporter:
                                 except Exception as e:
                                     message = f"Error creating labels: {str(e)}"
                                     self.helper.log_error(message)
-                                    errors.append(message)
+                                    self.errors.append(message)
                             batch_end_time = time.time()
                             batch_time_taken = batch_end_time - batch_start_time
                             time_from_enrichment_start = (
                                 batch_end_time - start_enrichment_time
                             )
-                            remaining_time = (
-                                time_from_enrichment_start / batch_index
-                            ) * (total_batch_count - batch_index)
+
                             self.helper.log_info(
                                 f"Processing batch {batch_index}/{total_batch_count} "
                                 f"took {batch_time_taken:.4f} seconds"
                             )
                             if batch_index % 5 == 0:
+                                remaining_time = (
+                                    (time_from_enrichment_start / batch_index)
+                                    * (total_batch_count - batch_index)
+                                    if enrichment_threshold > ip_count
+                                    else (
+                                        time_from_enrichment_start / enrichments_count
+                                    )
+                                    * (enrichment_threshold - enrichments_count)
+                                )
                                 self.helper.log_info(
                                     (
-                                        f"Elapsed time since start of enrichment: "
+                                        "Elapsed time since start of enrichment: "
                                         f"{self.format_duration(int(time_from_enrichment_start))} / "
-                                        f"Estimated time remaining: {self.format_duration(int(remaining_time))}"
+                                        "Estimated time remaining: "
+                                        f"{self.format_duration(int(remaining_time))}"
                                     )
                                 )
                             if batch_bundle_objects:
@@ -595,7 +569,7 @@ class CrowdSecImporter:
                                 except Exception as e:
                                     message = f"Error sending bundles: {str(e)}"
                                     self.helper.log_error(message)
-                                    errors.append(message)
+                                    self.errors.append(message)
 
                         # Store the current run_start_timestamp as a last run
                         self.helper.set_state({"last_run": run_start_timestamp})
@@ -604,7 +578,7 @@ class CrowdSecImporter:
                             + str(run_start_timestamp)
                         )
                         self.helper.log_info(message)
-                        for error in errors:
+                        for error in self.errors:
                             self.helper.api.work.to_processed(
                                 work_id, error, in_error=True
                             )
