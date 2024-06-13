@@ -194,6 +194,16 @@ class CrowdSecImporter:
                 # Get the current timestamp and check
                 run_start_timestamp = int(time.time())
                 current_state = self.helper.get_state() or {}
+                # Check is_running to avoid multiple runs
+                is_running = current_state.get("is_running", False)
+                if is_running:
+                    self.helper.log_info(
+                        "CrowdSec import connector is already running, waiting for the current run to complete."
+                    )
+                    time.sleep(60)
+                    continue
+                else:
+                    self.helper.set_state({"is_running": True})
                 now = datetime.utcnow().replace(microsecond=0)
                 last_run = current_state.get("last_run", 0)
                 last_run = datetime.utcfromtimestamp(last_run).replace(microsecond=0)
@@ -542,12 +552,11 @@ class CrowdSecImporter:
                                     message = f"Error sending bundles: {str(e)}"
                                     self.helper.log_error(message)
                                     errors.append(message)
-                            if i == 0:
-                                # Store the last_run on first loop to avoid multiple runs
-                                self.helper.set_state({"last_run": run_start_timestamp})
 
                         # Store the current run_start_timestamp as a last run
                         self.helper.set_state({"last_run": run_start_timestamp})
+                        # Flag the connector as not running
+                        self.helper.set_state({"is_running": False})
                         message = (
                             "CrowdSec import connector successfully run, last_run stored as "
                             + str(run_start_timestamp)
@@ -569,6 +578,7 @@ class CrowdSecImporter:
                             work_id, message, in_error=True
                         )
                         self.helper.log_error(str(e))
+                        self.helper.set_state({"is_running": False})
 
                     time.sleep(60)
                 else:
@@ -581,8 +591,10 @@ class CrowdSecImporter:
             except (KeyboardInterrupt, SystemExit):
                 delete_folder(sub_folder)
                 self.helper.log_info("CrowdSec import connector stop")
+                self.helper.set_state({"is_running": False})
                 exit(0)
             except Exception as e:
                 delete_folder(sub_folder)
                 self.helper.log_error(str(e))
+                self.helper.set_state({"is_running": False})
                 time.sleep(60)
