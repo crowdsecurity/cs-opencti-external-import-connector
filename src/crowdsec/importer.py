@@ -172,6 +172,7 @@ class CrowdSecImporter:
         )
 
     def get_interval(self):
+        """Get the interval in seconds."""
         return int(self.interval) * 60 * 60
 
     @staticmethod
@@ -203,15 +204,16 @@ class CrowdSecImporter:
                 run_start_timestamp = int(time.time())
                 current_state = self.helper.get_state() or {}
                 now = datetime.utcnow().replace(microsecond=0)
-                last_run = current_state.get("last_run", 0)
-                last_run = datetime.utcfromtimestamp(last_run).replace(microsecond=0)
+                last_run_state = current_state.get("last_run", 0)
+                last_run = datetime.utcfromtimestamp(last_run_state).replace(microsecond=0)
 
                 if last_run.year == 1970:
                     self.helper.log_info("CrowdSec import has never run")
                     # Flag current run as last run to avoid multiple concurrent runs
                     self.helper.set_state({"last_run": run_start_timestamp})
                 else:
-                    self.helper.log_info(f"Connector last run: {last_run}")
+                    last_run_with_tz = datetime.fromtimestamp(last_run_state).replace(microsecond=0)
+                    self.helper.log_info(f"Connector last run: {last_run_with_tz}")
 
                 # If the last_run is old enough, run the connector
                 if (now - last_run).total_seconds() > self.get_interval():
@@ -598,11 +600,14 @@ class CrowdSecImporter:
                                 work_id, error, in_error=True
                             )
                         self.helper.api.work.to_processed(work_id, message)
-                        self.helper.log_info(
-                            "Last_run stored, next run in: "
-                            + str(round(self.get_interval() / 60 / 60 / 24, 2))
-                            + " days"
-                        )
+                        time_from_run_start = int(time.time()) - run_start_timestamp
+                        next_run = self.get_interval() - time_from_run_start
+                        if next_run > 0:
+                            self.helper.log_info(
+                                "Next run in: "
+                                + str(round(next_run / 60 / 60 , 2))
+                                + " hours"
+                            )
                     except Exception as e:
                         message = f"Error running CrowdSec import connector: {str(e)}"
                         self.helper.api.work.to_processed(
