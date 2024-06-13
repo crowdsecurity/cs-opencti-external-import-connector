@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """CrowdSec builder module."""
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union, Literal
 
 import pycountry
 from dateutil.parser import parse
@@ -22,6 +22,7 @@ from stix2 import (
     ExternalReference,
     Bundle,
     Identity,
+    IPv6Address,
 )
 
 from .constants import MITRE_URL, CVE_REGEX, FAKE_INDICATOR_ID
@@ -187,23 +188,31 @@ class CrowdSecBuilder:
     def get_bundle(self) -> List[object]:
         return self.bundle_objects
 
-    def upsert_observable_ipv4_address(
+    def upsert_observable(
         self,
+        ip_version: int,
         description: str,
         labels: List[Dict],
         markings: List[str],
         external_references: List[Dict],
         update: bool = False,
-    ) -> IPv4Address:
-        stix_observable = IPv4Address(
-            type="ipv4-addr",
+    ) -> Union[IPv4Address, IPv6Address]:
+        if ip_version not in [4, 6]:
+            raise ValueError("Invalid IP version")
+        address_classes = {4: IPv4Address, 6: IPv6Address}
+        address_types = {4: "ipv4-addr", 6: "ipv6-addr"}
+        address_type = address_types[ip_version]
+        address_class = address_classes[ip_version]
+
+        stix_observable = address_class(
+            type=address_type,
             spec_version="2.1",
             value=self.ip,
             object_marking_refs=None if update else markings,
             custom_properties={
                 "x_opencti_description": description,
                 "labels": [label["value"] for label in labels] if labels else [],
-                "x_opencti_type": "IPv4-Addr",
+                "x_opencti_type": f"IPv{ip_version}-Addr",
                 "created_by_ref": None if update else self.organisation["standard_id"],
                 "external_references": external_references,
             },

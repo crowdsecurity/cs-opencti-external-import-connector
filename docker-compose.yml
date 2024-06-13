@@ -9,7 +9,7 @@ services:
       - CONNECTOR_TYPE=EXTERNAL_IMPORT
       - CONNECTOR_UPDATE_EXISTING_DATA=false
       - "CONNECTOR_NAME=CrowdSec Import"
-      - CONNECTOR_SCOPE=CrowdSecImport
+      - CONNECTOR_SCOPE=IPv4-Addr,IPv6-Addr # MIME type or Stix Object
       - CONNECTOR_CONFIDENCE_LEVEL=100 # From 0 (Unknown) to 100 (Fully trusted)
       - CONNECTOR_LOG_LEVEL=error
       - CROWDSEC_IMPORT_NAME=CrowdSec

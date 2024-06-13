@@ -25,6 +25,7 @@ from .helper import (
     verify_checksum,
     read_cti_dump,
     handle_none_cti_value,
+    get_ip_version,
 )
 
 
@@ -300,6 +301,12 @@ class CrowdSecImporter:
                                     self.helper.log_debug(
                                         f"Processing IP {counter}/{ip_count}: {ip}"
                                     )
+                                    ip_version = get_ip_version(ip)
+                                    if ip_version not in [4, 6]:
+                                        message = f"IP {ip} is not a valid IPv4 or IPv6 address"
+                                        self.helper.log_error(message)
+                                        errors.append(message)
+                                        continue
                                     # Preparing the bundle to be sent to OpenCTI worker
                                     bundle_objects = []
                                     # Get the current timestamp for each IP processed
@@ -343,12 +350,16 @@ class CrowdSecImporter:
                                         description = handle_description["description"]
 
                                     # Retrieve specific data from CTI
-                                    self.helper.log_debug(f"CTI data for {ip}: {cti_data}")
+                                    self.helper.log_debug(
+                                        f"CTI data for {ip}: {cti_data}"
+                                    )
                                     reputation = cti_data.get("reputation", "")
                                     mitre_techniques = handle_none_cti_value(
                                         cti_data.get("mitre_techniques", [])
                                     )
-                                    cves = handle_none_cti_value(cti_data.get("cves", []))
+                                    cves = handle_none_cti_value(
+                                        cti_data.get("cves", [])
+                                    )
 
                                     indicator = None
                                     builder = CrowdSecBuilder(
@@ -370,14 +381,13 @@ class CrowdSecImporter:
                                             seen_labels.add(label_tuple)
                                             batch_labels.append(label)
 
-                                    stix_observable = (
-                                        builder.upsert_observable_ipv4_address(
-                                            description=description,
-                                            labels=labels,
-                                            markings=[self.tlp] if self.tlp else None,
-                                            external_references=[cti_external_reference],
-                                            update=True if database_observable else False,
-                                        )
+                                    stix_observable = builder.upsert_observable(
+                                        ip_version=ip_version,
+                                        description=description,
+                                        labels=labels,
+                                        markings=[self.tlp] if self.tlp else None,
+                                        external_references=[cti_external_reference],
+                                        update=True if database_observable else False,
                                     )
                                     self.helper.log_debug(
                                         f"STIX Observable created/updated: {stix_observable}"
@@ -389,7 +399,11 @@ class CrowdSecImporter:
                                     sighting_ext_refs = [cti_external_reference]
                                     # Handle reputation
                                     if reputation in self.indicator_create_from:
-                                        pattern = f"[ipv4-addr:value = '{ip}']"
+                                        pattern = (
+                                            f"[ipv4-addr:value = '{ip}']"
+                                            if ip_version == 4
+                                            else f"[ipv6-addr:value = '{ip}']"
+                                        )
                                         indicator = builder.add_indicator_based_on(
                                             observable_id,
                                             stix_observable,
@@ -404,7 +418,9 @@ class CrowdSecImporter:
                                                 mitre_technique
                                             )
                                         )
-                                        sighting_ext_refs.append(mitre_external_reference)
+                                        sighting_ext_refs.append(
+                                            mitre_external_reference
+                                        )
                                         # Create attack pattern
                                         if (
                                             indicator
@@ -516,7 +532,9 @@ class CrowdSecImporter:
                                         work_id=work_id,
                                     )
                                     bundle_end_time = time.time()
-                                    bundle_time_taken = bundle_end_time - bundle_start_time
+                                    bundle_time_taken = (
+                                        bundle_end_time - bundle_start_time
+                                    )
                                     self.helper.log_info(
                                         f"Sending bundles took {bundle_time_taken:.4f} seconds"
                                     )
@@ -536,7 +554,9 @@ class CrowdSecImporter:
                         )
                         self.helper.log_info(message)
                         for error in errors:
-                            self.helper.api.work.to_processed(work_id, error, in_error=True)
+                            self.helper.api.work.to_processed(
+                                work_id, error, in_error=True
+                            )
                         self.helper.api.work.to_processed(work_id, message)
                         self.helper.log_info(
                             "Last_run stored, next run in: "
