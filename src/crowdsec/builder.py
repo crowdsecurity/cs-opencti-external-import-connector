@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """CrowdSec builder module."""
-from typing import List, Dict, Optional, Union, Literal
+from typing import List, Dict, Optional, Union
 
 import pycountry
 from dateutil.parser import parse
@@ -293,11 +293,12 @@ class CrowdSecBuilder:
         return indicator
 
     def add_attack_pattern_for_mitre(
-        self,
-        mitre_technique: Dict,
-        markings: List[str],
-        indicator: Indicator,
-        external_references: List[Dict],
+            self,
+            mitre_technique: Dict,
+            markings: List[str],
+            indicator_id: Optional[str],
+            observable_id: str,
+            external_references: List[Dict],
     ) -> AttackPattern:
         description = f"{mitre_technique['label']}: {mitre_technique['description']}"
         name = f"MITRE ATT&CK ({mitre_technique['name']} - {mitre_technique['label']})"
@@ -315,20 +316,37 @@ class CrowdSecBuilder:
             object_marking_refs=markings,
             external_references=external_references,
         )
-        relationship = Relationship(
-            id=StixCoreRelationship.generate_id(
-                "indicates",
-                indicator.id,
-                attack_pattern.id,
-            ),
-            relationship_type="indicates",
-            created_by_ref=self.organisation["standard_id"],
-            source_ref=indicator.id,
-            target_ref=attack_pattern.id,
-            confidence=self.helper.connect_confidence_level,
-            allow_custom=True,
-        )
-        self.add_to_bundle([attack_pattern, relationship])
+        if indicator_id:
+            relationship = Relationship(
+                id=StixCoreRelationship.generate_id(
+                    "indicates",
+                    indicator_id,
+                    attack_pattern.id,
+                ),
+                relationship_type="indicates",
+                created_by_ref=self.organisation["standard_id"],
+                source_ref=indicator_id,
+                target_ref=attack_pattern.id,
+                confidence=self.helper.connect_confidence_level,
+                allow_custom=True,
+            )
+            self.add_to_bundle([relationship])
+        else:
+            relationship = Relationship(
+                id=StixCoreRelationship.generate_id(
+                    "related-to",
+                    observable_id,
+                    attack_pattern.id,
+                ),
+                relationship_type="related-to",
+                created_by_ref=self.organisation["standard_id"],
+                source_ref=observable_id,
+                target_ref=attack_pattern.id,
+                confidence=self.helper.connect_confidence_level,
+                allow_custom=True,
+            )
+            self.add_to_bundle([relationship])
+        self.add_to_bundle([attack_pattern])
 
         return attack_pattern
 
@@ -542,10 +560,11 @@ class CrowdSecBuilder:
         return result
 
     def handle_target_countries(
-        self,
-        attack_patterns: List[str],
-        markings: List[str],
-        observable_id: Optional[str] = None,
+            self,
+            attack_patterns: List[str],
+            markings: List[str],
+            observable_id: Optional[str] = None,
+            indicator_id: Optional[str] = None,
     ) -> None:
         # Create countries only if we have attack patterns or observable_id to link them
         if attack_patterns or observable_id:
@@ -576,6 +595,8 @@ class CrowdSecBuilder:
                     object_marking_refs=markings,
                 )
                 self.add_to_bundle([country])
+
+                # Create relationship between country and indicator/observable
                 if observable_id:
                     sighting = Sighting(
                         id=StixSightingRelationship.generate_id(
@@ -592,7 +613,9 @@ class CrowdSecBuilder:
                         confidence=_get_confidence_level(self.confidence),
                         object_marking_refs=markings,
                         external_references=None,
-                        sighting_of_ref=FAKE_INDICATOR_ID,
+                        sighting_of_ref=(
+                            indicator_id if indicator_id else FAKE_INDICATOR_ID
+                        ),
                         where_sighted_refs=[country_id],
                         custom_properties={"x_opencti_sighting_of_ref": observable_id},
                     )
@@ -604,12 +627,12 @@ class CrowdSecBuilder:
                         id=StixCoreRelationship.generate_id(
                             "targets",
                             attack_pattern_id,
-                            country["id"],
+                            country_id,
                         ),
                         relationship_type="targets",
                         created_by_ref=self.organisation["standard_id"],
                         source_ref=attack_pattern_id,
-                        target_ref=country["id"],
+                        target_ref=country_id,
                         confidence=self.helper.connect_confidence_level,
                         allow_custom=True,
                     )

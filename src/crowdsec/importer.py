@@ -86,6 +86,19 @@ class CrowdSecImporter:
             self.config,
             default=True,
         )
+        self.add_mitre_ext_ref_to_sighting = get_config_variable(
+            "CROWDSEC_ADD_MITRE_EXT_REF_TO_SIGHTING",
+            ["crowdsec", "add_mitre_ext_ref_to_sighting"],
+            self.config,
+            default=True,
+        )
+        self.vulnerability_create_from_cve = get_config_variable(
+            "CROWDSEC_VULNERABILITY_CREATE_FROM_CVE",
+            ["crowdsec", "vulnerability_create_from_cve"],
+            self.config,
+            default=True,
+        )
+
         tlp_config = clean_config(
             get_config_variable(
                 "CROWDSEC_TLP",
@@ -143,6 +156,13 @@ class CrowdSecImporter:
         self.attack_pattern_create_from_mitre = get_config_variable(
             "CROWDSEC_ATTACK_PATTERN_CREATE_FROM_MITRE",
             ["crowdsec", "attack_pattern_create_from_mitre"],
+            self.config,
+            default=True,
+        )
+
+        self.add_mitre_ext_ref_to_attack_pattern = get_config_variable(
+            "CROWDSEC_ADD_MITRE_EXT_REF_TO_ATTACK_PATTERN",
+            ["crowdsec", "add_mitre_ext_ref_to_attack_pattern"],
             self.config,
             default=True,
         )
@@ -321,27 +341,41 @@ class CrowdSecImporter:
         # Handle mitre_techniques
         attack_patterns = []
         for mitre_technique in mitre_techniques:
-            mitre_external_reference = builder.create_external_ref_for_mitre(
-                mitre_technique
-            )
-            sighting_ext_refs.append(mitre_external_reference)
+            mitre_external_reference = None
+            if (
+                    self.add_mitre_ext_ref_to_sighting
+                    or (self.attack_pattern_create_from_mitre and self.add_mitre_ext_ref_to_attack_pattern)
+            ):
+                mitre_external_reference = builder.create_external_ref_for_mitre(
+                    mitre_technique
+                )
+                if self.add_mitre_ext_ref_to_sighting:
+                    sighting_ext_refs.append(mitre_external_reference)
             # Create attack pattern
-            if indicator and self.attack_pattern_create_from_mitre:
+            if self.attack_pattern_create_from_mitre:
+                ext_ref = (
+                    [mitre_external_reference]
+                    if self.add_mitre_ext_ref_to_attack_pattern
+                    else None
+                )
+
                 attack_pattern = builder.add_attack_pattern_for_mitre(
                     mitre_technique=mitre_technique,
-                    markings=([self.tlp] if self.tlp else None),
-                    indicator=indicator,
-                    external_references=[mitre_external_reference],
+                    markings=[self.tlp] if self.tlp else None,
+                    indicator_id=(indicator.id if indicator else None),
+                    observable_id=observable_id,
+                    external_references=ext_ref,
                 )
                 attack_patterns.append(attack_pattern.id)
         # Handle CVEs
-        for cve in cves:
-            # Create vulnerability
-            builder.add_vulnerability_from_cve(
-                cve,
-                markings=[self.tlp] if self.tlp else None,
-                observable_id=observable_id,
-            )
+        if self.vulnerability_create_from_cve:
+            for cve in cves:
+                # Create vulnerability
+                builder.add_vulnerability_from_cve(
+                    cve,
+                    markings=[self.tlp] if self.tlp else None,
+                    observable_id=observable_id,
+                )
         # Handle target countries
         builder.handle_target_countries(
             attack_patterns=attack_patterns,
@@ -349,6 +383,7 @@ class CrowdSecImporter:
             observable_id=(
                 observable_id if self.create_targeted_countries_sightings else None
             ),
+            indicator_id=(indicator.id if indicator else None),
         )
         # Add note
         if self.create_note:
