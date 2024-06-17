@@ -293,12 +293,12 @@ class CrowdSecBuilder:
         return indicator
 
     def add_attack_pattern_for_mitre(
-            self,
-            mitre_technique: Dict,
-            markings: List[str],
-            indicator_id: Optional[str],
-            observable_id: str,
-            external_references: List[Dict],
+        self,
+        mitre_technique: Dict,
+        markings: List[str],
+        indicator_id: Optional[str],
+        observable_id: str,
+        external_references: List[Dict],
     ) -> AttackPattern:
         description = f"{mitre_technique['label']}: {mitre_technique['description']}"
         name = f"MITRE ATT&CK ({mitre_technique['name']} - {mitre_technique['label']})"
@@ -560,11 +560,11 @@ class CrowdSecBuilder:
         return result
 
     def handle_target_countries(
-            self,
-            attack_patterns: List[str],
-            markings: List[str],
-            observable_id: Optional[str] = None,
-            indicator_id: Optional[str] = None,
+        self,
+        attack_patterns: List[str],
+        markings: List[str],
+        observable_id: Optional[str] = None,
+        indicator_id: Optional[str] = None,
     ) -> None:
         # Create countries only if we have attack patterns or observable_id to link them
         if attack_patterns or observable_id:
