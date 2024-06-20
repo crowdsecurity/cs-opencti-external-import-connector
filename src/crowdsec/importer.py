@@ -395,18 +395,14 @@ class CrowdSecImporter:
             sub_folder = None
             try:
                 # Get the current timestamp and check
-                run_start_timestamp = int(time.time())
                 current_state = self.helper.get_state() or {}
                 now = datetime.utcnow().replace(microsecond=0)
                 last_run_state = current_state.get("last_run", 0)
                 last_run = datetime.utcfromtimestamp(last_run_state).replace(
                     microsecond=0
                 )
-
                 if last_run.year == 1970:
                     self.helper.log_info("CrowdSec import has never run")
-                    # Flag current run as last run to avoid multiple concurrent runs
-                    self.helper.set_state({"last_run": run_start_timestamp})
                 else:
                     self.helper.log_info(f"Connector last run: {last_run}+00:00")
 
@@ -414,6 +410,9 @@ class CrowdSecImporter:
                 if (now - last_run).total_seconds() > self.get_interval():
                     # Initiate the run
                     self.helper.log_info("CrowdSec import connector will run!")
+                    # Flag current run as last run to avoid multiple concurrent runs
+                    run_start_timestamp = int(time.time())
+                    self.helper.set_state({"last_run": run_start_timestamp})
                     friendly_name = f"CrowdSec import connector run @ {now}"
                     work_id = self.helper.api.work.initiate_work(
                         self.helper.connect_id, friendly_name
