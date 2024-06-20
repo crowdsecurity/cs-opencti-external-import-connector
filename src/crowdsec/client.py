@@ -36,7 +36,7 @@ class CrowdSecClient:
                 urljoin(self.url, f"dump"),
                 headers={
                     "x-api-key": self.api_key,
-                    "User-Agent": "crowdsec-opencti-import/v0.0.1",
+                    "User-Agent": "crowdsec-import-opencti/v0.0.1",
                 },
             )
             if resp.status_code == 429:

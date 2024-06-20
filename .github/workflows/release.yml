@@ -78,9 +78,9 @@ jobs:
               exit 1
             fi
           fi
-          # Check "User-Agent": "crowdsec-opencti/vVERSION_NUMBER", in src/crowdsec/client.py
-          UA_VERSION=$(grep -E "\"User-Agent\": \"crowdsec-opencti\/v(.*)\""  src/crowdsec/client.py | sed 's/ //g' | sed 's/"//g')
-          if [[ $UA_VERSION == "User-Agent:crowdsec-opencti/v${{ env.VERSION_NUMBER }}," ]]
+          # Check "User-Agent": "crowdsec-import-opencti/vVERSION_NUMBER", in src/crowdsec/client.py
+          UA_VERSION=$(grep -E "\"User-Agent\": \"crowdsec-import-opencti\/v(.*)\""  src/crowdsec/client.py | sed 's/ //g' | sed 's/"//g')
+          if [[ $UA_VERSION == "User-Agent:crowdsec-import-opencti/v${{ env.VERSION_NUMBER }}," ]]
           then
               echo "USER AGENT VERSION OK"
           else

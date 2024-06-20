@@ -101,7 +101,7 @@ class CrowdSecImporter:
             "CROWDSEC_MIN_DELAY_BETWEEN_ENRICHMENTS",
             ["crowdsec", "min_delay_between_enrichments"],
             self.config,
-            default=300,
+            default=86400,
             isNumber=True,
         )
         self.last_enrichment_date_in_description = get_config_variable(

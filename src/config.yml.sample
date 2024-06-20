@@ -16,6 +16,7 @@ crowdsec:
   api_version: v2 # v2 is the only supported version for now
   max_tlp: 'TLP:AMBER' # Max TLP level for observable enrichment
   tlp: 'TLP_AMBER' # Default TLP level for created observable. Enum: TLP_WHITE, TLP_GREEN, TLP_AMBER, TLP_RED
+  import_interval: 24 # Interval in hours between two imports
   labels_scenario_name: true # Enable/disable scenario's name labels
   labels_scenario_label: false # Enable/disable scenario's label labels
   labels_scenario_color: '#2E2A14' # Color of scenario label (default: dark olive green)
