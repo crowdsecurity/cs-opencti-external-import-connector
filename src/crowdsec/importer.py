@@ -519,7 +519,7 @@ class CrowdSecImporter:
                                 f"Processing batch {batch_index}/{total_batch_count} "
                                 f"took {batch_time_taken:.4f} seconds"
                             )
-                            if batch_index % 5 == 0:
+                            if batch_index % 5 == 0 and enrichments_count > 0:
                                 remaining_time = (
                                     (time_from_enrichment_start / batch_index)
                                     * (total_batch_count - batch_index)
