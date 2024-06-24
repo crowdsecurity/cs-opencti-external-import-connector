@@ -537,6 +537,13 @@ class CrowdSecImporter:
                                         f"{self.format_duration(int(remaining_time))}"
                                     )
                                 )
+                                self.helper.log_info(
+                                    (
+                                        f"Current number of enrichments: {enrichments_count}. "
+                                        f"Enrichment threshold: {enrichment_threshold}. "
+                                        f"Total IPs count: {ip_count}"
+                                    )
+                                )
                             if batch_bundle_objects:
                                 try:
                                     bundle_start_time = time.time()
