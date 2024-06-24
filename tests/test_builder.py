@@ -68,7 +68,7 @@ class CrowdSecBuilderTest(unittest.TestCase):
             cti_data=self.cti_data,
             organisation=self.helper.api.stix_domain_object.get_by_stix_id_or_name(
                 name="CrowdSec"
-            )
+            ),
         )
         self.assertEqual(len(builder.bundle_objects), 0)
         self.assertEqual(builder.labels_scenario_name, True)
@@ -112,7 +112,7 @@ class CrowdSecBuilderTest(unittest.TestCase):
             cti_data=self.cti_data,
             organisation=self.helper.api.stix_domain_object.get_by_stix_id_or_name(
                 name="CrowdSec"
-            )
+            ),
         )
         observable = stix2.IPv4Address(
             value="1.2.3.4",
@@ -136,7 +136,7 @@ class CrowdSecBuilderTest(unittest.TestCase):
             cti_data=self.cti_data,
             organisation=self.helper.api.stix_domain_object.get_by_stix_id_or_name(
                 name="CrowdSec"
-            )
+            ),
         )
         stix_observable = load_file("stix_observable.json")
 
@@ -160,7 +160,7 @@ class CrowdSecBuilderTest(unittest.TestCase):
             cti_data=self.cti_data,
             organisation=self.helper.api.stix_domain_object.get_by_stix_id_or_name(
                 name="CrowdSec"
-            )
+            ),
         )
 
         observable_id = load_file("observable.json")["standard_id"]
@@ -197,7 +197,7 @@ class CrowdSecBuilderTest(unittest.TestCase):
             cti_data=self.cti_data,
             organisation=self.helper.api.stix_domain_object.get_by_stix_id_or_name(
                 name="CrowdSec"
-            )
+            ),
         )
 
         indicator = self.indicator
@@ -232,7 +232,7 @@ class CrowdSecBuilderTest(unittest.TestCase):
             cti_data=self.cti_data,
             organisation=self.helper.api.stix_domain_object.get_by_stix_id_or_name(
                 name="CrowdSec"
-            )
+            ),
         )
         observable_id = load_file("observable.json")["standard_id"]
 
@@ -266,7 +266,7 @@ class CrowdSecBuilderTest(unittest.TestCase):
             cti_data=self.cti_data,
             organisation=self.helper.api.stix_domain_object.get_by_stix_id_or_name(
                 name="CrowdSec"
-            )
+            ),
         )
         observable = load_file("observable.json")
         observable_id = observable["standard_id"]
@@ -288,7 +288,7 @@ class CrowdSecBuilderTest(unittest.TestCase):
             cti_data=self.cti_data,
             organisation=self.helper.api.stix_domain_object.get_by_stix_id_or_name(
                 name="CrowdSec"
-            )
+            ),
         )
 
         observable_id = load_file("observable.json")["standard_id"]
@@ -334,7 +334,7 @@ class CrowdSecBuilderTest(unittest.TestCase):
             cti_data=self.cti_data,
             organisation=self.helper.api.stix_domain_object.get_by_stix_id_or_name(
                 name="CrowdSec"
-            )
+            ),
         )
         indicator = self.indicator
 
@@ -376,7 +376,7 @@ class CrowdSecBuilderTest(unittest.TestCase):
             cti_data=self.cti_data,
             organisation=self.helper.api.stix_domain_object.get_by_stix_id_or_name(
                 name="CrowdSec"
-            )
+            ),
         )
         indicator = self.indicator
 
@@ -409,7 +409,7 @@ class CrowdSecBuilderTest(unittest.TestCase):
             cti_data=self.cti_data,
             organisation=self.helper.api.stix_domain_object.get_by_stix_id_or_name(
                 name="CrowdSec"
-            )
+            ),
         )
         indicator = self.indicator
 

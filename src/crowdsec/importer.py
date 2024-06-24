@@ -569,8 +569,9 @@ class CrowdSecImporter:
                         # Store the current run_start_timestamp as a last run
                         self.helper.set_state({"last_run": run_start_timestamp})
                         message = (
-                            "CrowdSec import connector successfully run, last_run stored as "
-                            + str(run_start_timestamp)
+                            f"CrowdSec import connector successfully run. "
+                            f"Total number of enrichments: {enrichments_count}. "
+                            f"last_run stored as {str(run_start_timestamp)}."
                         )
                         self.helper.log_info(message)
                         for error in self.errors:
