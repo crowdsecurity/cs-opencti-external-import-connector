@@ -234,6 +234,8 @@ We also compared the time needed to ingest different numbers of IP addressses us
 
 We can see that, with the current server configuration, the more IP addresses we ingest, the lower the average number of bundles ingested per second. 
 
+As the time of writing, there are  [ongoing issues](https://github.com/OpenCTI-Platform/opencti/issues/4936) on the OpenCTI GitHub repository. We'll continue to monitor them to see what could be done to improve ingestion performance.
+
 
 
 
