@@ -45,7 +45,7 @@ jobs:
           path: ${{ env.VERSION_SOURCES }}
 
       - name: Check version ${{ env.VERSION_NUMBER }} consistency in files
-        # CHANGELOG.md, src/crowdsec.py
+        # CHANGELOG.md, src/crowdsec/client.py
         run: |
           cd ${{ env.VERSION_SOURCES }}
           # Check top ## [VERSION_NUMBER](GITHUB_URL/releases/tag/vVERSION_NUMBER) - yyyy-mm-dd in CHANGELOG.md
