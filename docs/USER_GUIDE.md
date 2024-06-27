@@ -10,7 +10,12 @@
 - [Description](#description)
   - [Configuration](#configuration)
     - [Parameters meaning](#parameters-meaning)
+  - [Example: Enrichment with default settings](#example-enrichment-with-default-settings)
   - [Quotas](#quotas)
+- [Performance and metrics](#performance-and-metrics)
+  - [Light import vs Full import](#light-import-vs-full-import)
+  - [Server 1 vs Server 2](#server-1-vs-server-2)
+  - [Comparison by number of IPs](#comparison-by-number-of-ips)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -82,7 +87,7 @@ You will find a `config.yml.sample` file as example.
 
 
 
-### Example: Enrichment with recommended settings
+### Example: Enrichment with default settings
 
 In this example, we chose `146.70.186.190` as it is currently  reported for cve and mitre techniques.
 
