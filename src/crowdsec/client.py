@@ -2,10 +2,11 @@
 """CrowdSec client module."""
 
 import itertools
-from urllib.parse import urljoin
-import requests
-from time import sleep
 from dataclasses import dataclass
+from time import sleep
+from urllib.parse import urljoin
+
+import requests
 from pycti import OpenCTIConnectorHelper
 
 
@@ -33,7 +34,7 @@ class CrowdSecClient:
     def get_crowdsec_dump(self):
         for i in itertools.count(1, 1):
             resp = requests.get(
-                urljoin(self.url, f"dump"),
+                urljoin(self.url, "dump"),
                 headers={
                     "x-api-key": self.api_key,
                     "User-Agent": "crowdsec-import-opencti/v0.0.1",

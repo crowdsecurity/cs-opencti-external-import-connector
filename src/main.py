@@ -2,6 +2,7 @@
 """CrowdSec external import connector main file."""
 
 from time import sleep
+
 from crowdsec import CrowdSecImporter
 
 if __name__ == "__main__":

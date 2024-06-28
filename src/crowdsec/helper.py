@@ -9,7 +9,7 @@ import os.path
 import re
 import shutil
 import tarfile
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from .constants import LAST_ENRICHMENT_PATTERN
 

@@ -9,10 +9,7 @@ from urllib.parse import urljoin
 
 import stix2
 import yaml
-from pycti import (
-    OpenCTIConnectorHelper,
-    get_config_variable,
-)
+from pycti import OpenCTIConnectorHelper, get_config_variable
 from stix2 import Identity
 
 from .builder import CrowdSecBuilder
@@ -21,11 +18,11 @@ from .constants import CTI_API_URL, CTI_URL
 from .helper import (
     clean_config,
     delete_folder,
-    handle_observable_description,
-    verify_checksum,
-    read_cti_dump,
-    handle_none_cti_value,
     get_ip_version,
+    handle_none_cti_value,
+    handle_observable_description,
+    read_cti_dump,
+    verify_checksum,
 )
 
 
@@ -548,7 +545,7 @@ class CrowdSecImporter:
                                 try:
                                     bundle_start_time = time.time()
                                     self.helper.log_info(
-                                        f"Start sending {len(batch_bundle_objects)} bundles to to OpenCTI"
+                                        f"Start sending {len(batch_bundle_objects)} bundles to OpenCTI"
                                     )
                                     # bundle = stix2.Bundle(batch_bundle_objects, allow_custom=True)
                                     # bundle_json = bundle.serialize()
