@@ -7,10 +7,9 @@ import unittest
 from unittest.mock import MagicMock, PropertyMock
 
 import stix2
+from crowdsec.builder import CrowdSecBuilder
+from crowdsec.constants import FAKE_INDICATOR_ID
 from dateutil.parser import parse
-
-from src.crowdsec.builder import CrowdSecBuilder
-from src.crowdsec.constants import FAKE_INDICATOR_ID
 
 
 def load_file(filename: str):
