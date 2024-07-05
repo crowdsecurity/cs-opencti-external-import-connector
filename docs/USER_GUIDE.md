@@ -9,7 +9,6 @@
 
 - [Description](#description)
   - [Configuration](#configuration)
-    - [Parameters meaning](#parameters-meaning)
   - [Example: Enrichment with default settings](#example-enrichment-with-default-settings)
   - [Quotas](#quotas)
 - [Performance and metrics](#performance-and-metrics)
