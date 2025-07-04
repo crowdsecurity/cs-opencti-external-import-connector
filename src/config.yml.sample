@@ -17,6 +17,7 @@ crowdsec:
   max_tlp: 'TLP:AMBER' # Max TLP level for observable enrichment
   tlp: 'TLP_AMBER' # Default TLP level for created observable. Enum: TLP_WHITE, TLP_GREEN, TLP_AMBER, TLP_RED
   import_interval: 24 # Interval in hours between two imports
+  import_query: 'behaviors.label:"SSH Bruteforce" AND reputation:"malicious"' # Query to filter CrowdSec data for import. Default is behaviors.label:"SSH Bruteforce"
   labels_scenario_name: true # Enable/disable scenario's name labels
   labels_scenario_label: false # Enable/disable scenario's label labels
   labels_scenario_color: '#2E2A14' # Color of scenario label (default: dark olive green)
