@@ -2,7 +2,7 @@
 """CrowdSec external import module."""
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List
 from urllib.parse import urljoin
@@ -13,16 +13,13 @@ from pycti import OpenCTIConnectorHelper, get_config_variable
 from stix2 import Identity
 
 from .builder import CrowdSecBuilder
-from .client import CrowdSecClient, QuotaExceedException
+from .client import CrowdSecClient
 from .constants import CTI_API_URL, CTI_URL
 from .helper import (
     clean_config,
-    delete_folder,
     get_ip_version,
     handle_none_cti_value,
     handle_observable_description,
-    read_cti_dump,
-    verify_checksum,
 )
 
 
@@ -122,15 +119,7 @@ class CrowdSecImporter:
             )
         )
         self.indicator_create_from = raw_indicator_create_from.split(",")
-        raw_dump_lists = clean_config(
-            get_config_variable(
-                "CROWDSEC_DUMP_LISTS",
-                ["crowdsec", "dump_lists"],
-                self.config,
-                default="fire",
-            )
-        )
-        self.dump_lists = raw_dump_lists.split(",")
+
         self.attack_pattern_create_from_mitre = get_config_variable(
             "CROWDSEC_ATTACK_PATTERN_CREATE_FROM_MITRE",
             ["crowdsec", "attack_pattern_create_from_mitre"],
@@ -144,6 +133,15 @@ class CrowdSecImporter:
             True,
             24,
         )
+        self.helper.log_error("test1")
+        self.query = get_config_variable(
+            "CROWDSEC_IMPORT_QUERY",
+            ["crowdsec", "import_query"],
+            self.config,
+            False,
+            "behaviors.label:\"SSH Bruteforce\"",
+        )
+        self.helper.log_error("test2")
         self.update_existing_data = get_config_variable(
             "CONNECTOR_UPDATE_EXISTING_DATA",
             ["connector", "update_existing_data"],
@@ -154,10 +152,10 @@ class CrowdSecImporter:
                 f"CrowdSec api version '{self.crowdsec_api_version}' is not supported "
             )
         else:
-            self.api_base_url = f"{CTI_API_URL}{self.crowdsec_api_version}/"
+            self.api_base_url = "https://admin.api.crowdsec.net/v1/integrations/685c054a0e6230feeb849ee8/content"
         self.client = CrowdSecClient(
             helper=self.helper,
-            url=self.api_base_url,
+            url=f"{CTI_API_URL}{self.crowdsec_api_version}/smoke/search",
             api_key=self.crowdsec_cti_key,
         )
         self.errors = []
@@ -362,30 +360,6 @@ class CrowdSecImporter:
         batch_bundle_objects.extend(bundle_objects)
         return True
 
-    def _extract_ips(self, dump: Dict, sub_folder: str) -> Dict:
-        ip_list = {}
-        for dump_list in self.dump_lists:
-            dump_file = os.path.join(sub_folder, f"{dump_list}.tar.gz")
-            list_info = dump.get(dump_list, {})
-            url = list_info.get("url", "")
-            checksum = list_info.get("checksum")
-            checksum_type = list_info.get("checksum_type")
-            if url:
-                self.helper.log_debug(f"Downloading {dump_list} file from {url} ...")
-                self.client.download_file(url, dump_file)
-                if not verify_checksum(dump_file, checksum, checksum_type):
-                    raise Exception(
-                        f"Checksum verification failed for {dump_list} file"
-                    )
-                self.helper.log_debug(f"Checksum OK.  Reading {dump_list} file ...")
-                dump_ips = read_cti_dump(dump_file)
-                self.helper.log_debug(f"{dump_list} IPs count: {len(dump_ips)}")
-                ip_list = {**ip_list, **dump_ips}
-            else:
-                self.helper.log_debug(f"No URL found for {dump_list}")
-
-        return ip_list
-
     def run(self) -> None:
         self.helper.log_info("CrowdSec external import running ...")
         while True:
@@ -393,9 +367,9 @@ class CrowdSecImporter:
             try:
                 # Get the current timestamp and check
                 current_state = self.helper.get_state() or {}
-                now = datetime.utcnow().replace(microsecond=0)
+                now = datetime.now(timezone.utc).replace(microsecond=0)
                 last_run_state = current_state.get("last_run", 0)
-                last_run = datetime.utcfromtimestamp(last_run_state).replace(
+                last_run = datetime.fromtimestamp(last_run_state, tz=timezone.utc).replace(
                     microsecond=0
                 )
                 if last_run.year == 1970:
@@ -415,41 +389,10 @@ class CrowdSecImporter:
                         self.helper.connect_id, friendly_name
                     )
                     try:
-                        # Retrieve CrowdSec CTI dump json
-                        try:
-                            self.helper.log_info("Query CrowdSec API Dump - Started")
-                            dump: Dict[str, Dict] = self.client.get_crowdsec_dump()
-                            self.helper.log_info("Query CrowdSec API Dump - Completed")
-                        except QuotaExceedException as ex:
-                            raise ex
-
-                        if not dump:
-                            return
-
-                        dump_folder = (
-                            os.path.dirname(os.path.abspath(__file__)) + "/dump"
-                        )
-                        if not os.path.exists(dump_folder):
-                            raise FileNotFoundError(
-                                f"Dump folder {dump_folder} does not exist"
-                            )
-                        sub_folder = os.path.join(dump_folder, str(run_start_timestamp))
-                        if not os.path.exists(sub_folder):
-                            os.makedirs(sub_folder, mode=0o755, exist_ok=True)
-                            self.helper.log_debug(
-                                f"Temporary {sub_folder} folder created"
-                            )
-
-                        ip_list = self._extract_ips(dump, sub_folder)
+                        # Retrieve CrowdSec IPS from Smoke Search API
+                        ip_list: Dict[str, Dict] = self.client.get_searched_ips(since=self.interval, query=self.query, enrichment_threshold = self.enrichment_threshold_per_import)
                         ip_count = len(ip_list)
                         self.helper.log_info(f"Total IPs count: {ip_count}")
-
-                        delete_folder(sub_folder)
-                        self.helper.log_debug("Temporary folder deleted")
-                        self.helper.log_info(
-                            "Files have been successfully parsed. Sending to OpenCTI starts."
-                        )
-
                         counter = 0
                         ip_items = list(ip_list.items())
                         total_batch_count = (
@@ -605,10 +548,8 @@ class CrowdSecImporter:
                     )
                     time.sleep(60)
             except (KeyboardInterrupt, SystemExit):
-                delete_folder(sub_folder)
                 self.helper.log_info("CrowdSec import connector stop")
                 exit(0)
             except Exception as e:
-                delete_folder(sub_folder)
                 self.helper.log_error(str(e))
                 time.sleep(60)

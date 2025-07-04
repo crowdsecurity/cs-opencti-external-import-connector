@@ -16,8 +16,17 @@
 - [OpenCTI Pull Request](#opencti-pull-request)
   - [Sync fork with upstream](#sync-fork-with-upstream)
   - [Update fork sources](#update-fork-sources)
+    - [Create a release](#create-a-release)
+    - [Retrieve zip for release](#retrieve-zip-for-release)
+    - [Create a branch for the Pull Request](#create-a-branch-for-the-pull-request)
+    - [Update sources](#update-sources)
+    - [Test locally before pull request](#test-locally-before-pull-request)
+    - [Open a Pull request](#open-a-pull-request)
   - [During the pull request review](#during-the-pull-request-review)
   - [Once pull request is merged](#once-pull-request-is-merged)
+    - [Sync fork with upstream](#sync-fork-with-upstream-1)
+    - [Retrieve last version](#retrieve-last-version)
+    - [Create a new minor release](#create-a-new-minor-release)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -78,13 +87,13 @@ To generate a UUID, you may use `uuidgen` command if available.
 ### Start Docker environment
 
 ```
-cd docker && docker-compose up -d --build
+cd docker && docker compose up -d --build
 ```
 
 Once all the containers have been started, you can enter the CrowdSec connector container to launch the python process responsible for enriching observables: 
 
 ```bash
-docker exec -ti docker_connector-crowdsec-import_1 /bin/sh
+docker exec -ti docker-connector-crowdsec-import-1 /bin/sh
 ```
 
 (The name of container may vary, and you can find it by running the `docker ps` command)
@@ -110,13 +119,13 @@ Thanks to this, you can test any code modification by stopping the process (`CTR
 To stop all containers: 
 
 ```bash
-docker-compose down
+docker compose down
 ```
 
 To stop all containers and remove all data (if you want to come back to a fresh OpenCTI installation): 
 
 ```
-docker-compose down -v
+docker compose down -v
 ```
 
 
@@ -126,7 +135,7 @@ docker-compose down -v
 First, prepare your virtual environment:
 
 ```bash
-source src/env/bin/activate
+source env/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r tests/test-requirements.txt
 ```

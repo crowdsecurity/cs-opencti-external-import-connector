@@ -1,17 +1,12 @@
 # -*- coding: utf-8 -*-
 """CrowdSec client module."""
 
-import itertools
 from dataclasses import dataclass
-from time import sleep
+from typing import Any, Dict
 from urllib.parse import urljoin
 
 import requests
 from pycti import OpenCTIConnectorHelper
-
-
-class QuotaExceedException(Exception):
-    pass
 
 
 @dataclass
@@ -22,38 +17,70 @@ class CrowdSecClient:
     url: str
     api_key: str
 
-    @staticmethod
-    def download_file(url: str, destination: str):
-        with requests.get(url, stream=True) as r:
-            r.raise_for_status()
-            with open(destination, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-        return destination
+    def get_searched_ips(self, since: str, query: str, enrichment_threshold: int) -> Dict[str, Dict[str, Any]]:
+        """
+        Pull every page of Smoke Search results that match the current
+        query and return them as a dict keyed by IP.
+        @see https://crowdsecurity.github.io/cti-api/#/Freemium/get_smoke_search
 
-    def get_crowdsec_dump(self):
-        for i in itertools.count(1, 1):
-            resp = requests.get(
-                urljoin(self.url, "dump"),
-                headers={
-                    "x-api-key": self.api_key,
-                    "User-Agent": "crowdsec-import-opencti/v0.0.1",
-                },
+        Returns
+        -------
+        Dict[str, Dict]
+            ``{ip: full_item_dict, ...}``
+        """
+        since_param=f"{since}h"
+        self.helper.log_info(f"Pulling IPs from {self.url} since {since_param} with query: {query}")
+
+        # 1. Build the constant parameters and headers for first request
+        params = {
+            "query": query,
+            "since": since_param
+        }
+        headers = {
+            "x-api-key": self.api_key,
+            "User-Agent": "crowdsec-import-opencti/v0.0.1",
+        }
+
+        session = requests.Session()
+        session.headers.update(headers)
+
+        # 2. Pagination loop
+        ip_list: Dict[str, Dict] = {}
+        page_url = self.url  # start with the base URL
+        page_idx = 1
+
+        while page_url and len(ip_list) < enrichment_threshold:
+            try:
+                resp = session.get(page_url, params=params if page_idx == 1 else None,
+                                   timeout=(10, 60))  # (connect, read) seconds
+                resp.raise_for_status()  # converts 4xx/5xx to HTTPError
+                body = resp.json()
+            except (requests.RequestException, ValueError) as err:
+                # network error OR invalid JSON
+                self.helper.log_error(f"Smoke Search request failed on page {page_idx}: {err}")
+                raise
+
+            # -- harvest items from this page --
+            items = body.get("items", [])
+            for item in items:
+                ip_list[item["ip"]] = item
+
+            self.helper.log_info(f"Page {page_idx}: fetched {len(items)} items "
+                                 f"(running total {len(ip_list)})")
+
+            # Discover the next page if any (absent when we are on the last page)
+            next_link = (
+                body.get("_links", {})
+                .get("next", {})  # absent when we are on the last page
+                .get("href")
             )
-            if resp.status_code == 429:
-                raise QuotaExceedException(
-                    (
-                        "Quota exceeded for CrowdSec CTI API. "
-                        "Please visit https://www.crowdsec.net/pricing to upgrade your plan."
-                    )
-                )
-            elif resp.status_code == 200:
-                return resp.json()
+            if next_link:
+                # absolute vs. relative hrefs – both handled by urljoin
+                page_url = urljoin(page_url, next_link)
+                page_idx += 1
             else:
-                self.helper.log_debug(f"CrowdSec CTI request {resp.url}")
-                self.helper.log_debug(f"CrowdSec CTI headers {resp.request.headers}")
-                self.helper.log_info(f"CrowdSec CTI response {resp.text}")
-                self.helper.log_warning(
-                    f"CrowdSec CTI returned {resp.status_code} response status code. Retrying..."
-                )
-            sleep(2**i)
+                page_url = None  # loop terminates
+
+        self.helper.log_info(f"Downloaded {len(ip_list)} unique Smoke Search IPs")
+        return ip_list
+
