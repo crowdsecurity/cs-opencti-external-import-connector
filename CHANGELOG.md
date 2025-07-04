@@ -11,6 +11,6 @@ functions provided by the `src` folder and the following files: `docker-compose.
 ---
 
 
-## [0.0.1](https://github.com/crowdsecurity/cs-opencti-external-import-connector/releases/tag/v0.0.1) - 2024-06-27
+## [0.0.1](https://github.com/crowdsecurity/cs-opencti-external-import-connector/releases/tag/v0.0.1) - 2025-07-11
 
 - Initial release
