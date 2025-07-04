@@ -139,7 +139,7 @@ class CrowdSecImporter:
             ["crowdsec", "import_query"],
             self.config,
             False,
-            "behaviors.label:\"SSH Bruteforce\"",
+            'behaviors.label:"SSH Bruteforce"',
         )
         self.helper.log_error("test2")
         self.update_existing_data = get_config_variable(
@@ -363,15 +363,14 @@ class CrowdSecImporter:
     def run(self) -> None:
         self.helper.log_info("CrowdSec external import running ...")
         while True:
-            sub_folder = None
             try:
                 # Get the current timestamp and check
                 current_state = self.helper.get_state() or {}
                 now = datetime.now(timezone.utc).replace(microsecond=0)
                 last_run_state = current_state.get("last_run", 0)
-                last_run = datetime.fromtimestamp(last_run_state, tz=timezone.utc).replace(
-                    microsecond=0
-                )
+                last_run = datetime.fromtimestamp(
+                    last_run_state, tz=timezone.utc
+                ).replace(microsecond=0)
                 if last_run.year == 1970:
                     self.helper.log_info("CrowdSec import has never run")
                 else:
@@ -390,7 +389,11 @@ class CrowdSecImporter:
                     )
                     try:
                         # Retrieve CrowdSec IPS from Smoke Search API
-                        ip_list: Dict[str, Dict] = self.client.get_searched_ips(since=self.interval, query=self.query, enrichment_threshold = self.enrichment_threshold_per_import)
+                        ip_list: Dict[str, Dict] = self.client.get_searched_ips(
+                            since=self.interval,
+                            query=self.query,
+                            enrichment_threshold=self.enrichment_threshold_per_import,
+                        )
                         ip_count = len(ip_list)
                         self.helper.log_info(f"Total IPs count: {ip_count}")
                         counter = 0

@@ -4,12 +4,13 @@ import datetime
 import json
 import os
 import unittest
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 import stix2
+from dateutil.parser import parse
+
 from crowdsec.builder import CrowdSecBuilder
 from crowdsec.constants import FAKE_INDICATOR_ID
-from dateutil.parser import parse
 
 
 def load_file(filename: str):
