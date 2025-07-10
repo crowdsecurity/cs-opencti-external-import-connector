@@ -53,7 +53,7 @@ class CrowdSecImporter:
             "CROWDSEC_ENRICHMENT_THRESHOLD_PER_IMPORT",
             ["crowdsec", "enrichment_threshold_per_import"],
             self.config,
-            default=10000,
+            default=2000,
             isNumber=True,
         )
         self.max_tlp = clean_config(
