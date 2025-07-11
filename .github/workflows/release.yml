@@ -7,10 +7,6 @@ on:
         type: string
         required: true
         description: Tag name
-      first-release:
-        type: boolean
-        description: First release
-        default: false
 
 jobs:
   create-release:
@@ -64,19 +60,16 @@ jobs:
           fi
           # Check top [_Compare with previous release_](GITHUB_URL/compare/vLAST_TAG...vVERSION_NUMBER) in CHANGELOG.md
           # Example: [_Compare with previous release_](https://github.com/crowdsecurity/python-capi-sdk/compare/v0.0.1...v0.0.2)
-          if [[ ${{ github.event.inputs.first-release }} != "true" ]]
+          COMPARISON=$(grep -oP "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/\K(.*)$" CHANGELOG.md | head -1)
+          LAST_TAG=$(curl -Ls -o /dev/null -w %{url_effective} $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/latest | grep -oP "\/tag\/\K(.*)$")
+          if [[ $COMPARISON == "$LAST_TAG...v${{ env.VERSION_NUMBER }})" ]]
           then
-            COMPARISON=$(grep -oP "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/\K(.*)$" CHANGELOG.md | head -1)
-            LAST_TAG=$(curl -Ls -o /dev/null -w %{url_effective} $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/latest | grep -oP "\/tag\/\K(.*)$")
-            if [[ $COMPARISON == "$LAST_TAG...v${{ env.VERSION_NUMBER }})" ]]
-            then
-              echo "VERSION COMPARISON OK"
-            else
-              echo "VERSION COMPARISON KO"
-              echo $COMPARISON
-              echo "$LAST_TAG...v${{ env.VERSION_NUMBER }})"
-              exit 1
-            fi
+            echo "VERSION COMPARISON OK"
+          else
+            echo "VERSION COMPARISON KO"
+            echo $COMPARISON
+            echo "$LAST_TAG...v${{ env.VERSION_NUMBER }})"
+            exit 1
           fi
           # Check "User-Agent": "crowdsec-import-opencti/vVERSION_NUMBER", in src/crowdsec/client.py
           UA_VERSION=$(grep -E "\"User-Agent\": \"crowdsec-import-opencti\/v(.*)\""  src/crowdsec/client.py | sed 's/ //g' | sed 's/"//g')

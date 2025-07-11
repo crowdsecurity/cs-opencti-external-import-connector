@@ -39,7 +39,7 @@ class CrowdSecClient:
         params = {"query": query, "since": since_param}
         headers = {
             "x-api-key": self.api_key,
-            "User-Agent": "crowdsec-import-opencti/v0.0.1",
+            "User-Agent": "crowdsec-import-opencti/v1.0.0",
         }
 
         session = requests.Session()
