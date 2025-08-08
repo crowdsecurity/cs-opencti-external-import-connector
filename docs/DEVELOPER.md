@@ -101,7 +101,7 @@ docker exec -ti docker-connector-crowdsec-import-1 /bin/sh
 Then: 
 
 ```bash
-cd /opt/opencti-crowdsec-import/ && python3 main.py
+cd /opt/opencti-crowdsec/ && python3 main.py
 ```
 
 You should see log messages, one of which contains `CrowdSec external import running ...`.
@@ -159,7 +159,7 @@ npm install -g doctoc
 Then, run it in the documentation folder:
 
 ```bash
-doctoc docs/*
+doctoc docs/* --maxlevel 4 && doctoc README-OPENCTI.md --maxlevel 4
 ```
 
 
@@ -236,13 +236,20 @@ Then, unzip the `crowdsec-opencti-external-import-connector-X.Y.Z.zip` archive i
 unzip /path/to/crowdsec-opencti-external-import-connector-X.Y.Z.zip -d external-import/crowdsec
 ```
 
+Delete the `README.md` file and rename the `README-OPENCTI.md` file to `README.md`:
+
+```shell
+rm README.md
+mv README-OPENCTI.md README.md
+```
+
 Now, you can verify the diff and you will probably need to update OpenCTI version in `docker-compose.yml` and `src/requirements.txt` files.
 
 Once all seems fine, add and commit your modifications:
 
 ```shell
 git add .
-git commit -m "[crowdsec] Update internal enrichment connector (vX.Y.Z)"
+git commit -m "[CrowdSec] Update external import connector (vX.Y.Z)"
 ```
 
 #### Test locally before pull request 
@@ -270,12 +277,21 @@ connector-crowdsec-import:
       - opencti
 ```
 
+To ensure docker is using the right connector version, you can rebuild the `connector-crowdsec-import` container before starting the docker stack:
+
+```bash
+docker compose down -v
+docker compose build --no-cache connector-crowdsec-import
+docker compose up -d --force-recreate connector-crowdsec-import
+```
+
+
 #### Open a Pull request
 
 Push your modification 
 
 ```shell
-git push origin git push origin feat/release-X.Y.Z
+git push origin feat/release-X.Y.Z
 ```
 
 Now you can use the `feat/release-X.Y.Z` branch to open a pull request in the OpenCTI repository.
@@ -316,7 +332,7 @@ cd cs-opencti-external-import-connector
 git checkout feat/pr-review-X.Y.Z
 ```
 
-Delete all folders except `.git` and `.github` folders (this 2 specific folders did not belongs to the release zip archive)
+Delete all folders except `.git`, `.github`, `docs` and `dev` folders (these specific folders did not belong to the release zip archive)
 
 Copy all files from the connector's fork: 
 
