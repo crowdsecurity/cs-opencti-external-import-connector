@@ -23,7 +23,7 @@ class CrowdSecClient:
         # Define headers in session and update when needed
         headers = {
             "x-api-key": self.config.crowdsec_key,
-            "User-Agent": "crowdsec-import-opencti/v1.0.0",
+            "User-Agent": "crowdsec-opencti-import/v1.0.0",
         }
 
         self.session = requests.Session()
