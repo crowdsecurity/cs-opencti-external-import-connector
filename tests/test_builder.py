@@ -1,22 +1,17 @@
 # -*- coding: utf-8 -*-
 """CrowdSec builder unittest."""
+import datetime
+import json
 import os
-import sys
+import unittest
+from datetime import timezone
+from unittest.mock import MagicMock, patch
 
-# Add src to Python path so we can import from crowdsec
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-import datetime  # noqa: E402
-import json  # noqa: E402
-import unittest  # noqa: E402
-from datetime import timezone  # noqa: E402
-from unittest.mock import MagicMock, patch  # noqa: E402
-
-import stix2  # noqa: E402
-import yaml  # noqa: E402
-from crowdsec.config_loader import CrowdSecConfig  # noqa: E402
-from crowdsec.converter_to_stix import FAKE_INDICATOR_ID, CrowdSecBuilder  # noqa: E402
-from dateutil.parser import parse  # noqa: E402
+import stix2
+import yaml
+from crowdsec.config_loader import CrowdSecConfig
+from crowdsec.converter_to_stix import FAKE_INDICATOR_ID, CrowdSecBuilder
+from dateutil.parser import parse
 
 
 def load_file(filename: str):
