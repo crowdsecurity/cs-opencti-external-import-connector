@@ -58,11 +58,11 @@ jobs:
 
       - name: Create zip for OpenCTI pull request
         run: |
-          zip -r ${{ env.VERSION_SOURCES }}.zip ${{ env.VERSION_SOURCES }}/ -x '${{ env.VERSION_SOURCES }}/.git*' -x '${{ env.VERSION_SOURCES }}/docs' -x '${{ env.VERSION_SOURCES }}/dev' -x '${{ env.VERSION_SOURCES }}/CHANGELOG.md' 
+          zip -r ${{ env.VERSION_SOURCES }}.zip ${{ env.VERSION_SOURCES }}/ -x '${{ env.VERSION_SOURCES }}/.git*' -x '${{ env.VERSION_SOURCES }}/docs/*' -x '${{ env.VERSION_SOURCES }}/dev/*' -x '${{ env.VERSION_SOURCES }}/CHANGELOG.md' 
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ZIP for OpenCTI pull request
+          name: ${{ env.VERSION_SOURCES }}.zip
           path: ${{ env.VERSION_SOURCES }}.zip
           retention-days: 10
           include-hidden-files: true
