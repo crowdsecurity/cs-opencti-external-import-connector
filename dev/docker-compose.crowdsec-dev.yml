@@ -4,7 +4,7 @@ services:
       context: ../cs-opencti-external-import-connector/dev
       dockerfile: Dockerfile-dev
     volumes:
-      - ../cs-opencti-external-import-connector/src:/opt/opencti-crowdsec-import
+      - ../cs-opencti-external-import-connector/src:/opt/opencti-crowdsec
     environment:
       - OPENCTI_URL=http://opencti:8080
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}

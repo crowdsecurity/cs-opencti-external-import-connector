@@ -18,6 +18,7 @@ functions provided by the `src` folder and the following files: `docker-compose.
 
 - Use `smoke/search` CTI endpoint instead of dumps to retrieve IPs
 - Set default value of `CROWDSEC_ENRICHMENT_THRESHOLD_PER_IMPORT` to 2000
+- Use OpenCTI's provided templates
 
 ---
 

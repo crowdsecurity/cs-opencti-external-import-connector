@@ -16,8 +16,7 @@
 - [OpenCTI Pull Request](#opencti-pull-request)
   - [Sync fork with upstream](#sync-fork-with-upstream)
   - [Update fork sources](#update-fork-sources)
-    - [Create a release](#create-a-release)
-    - [Retrieve zip for release](#retrieve-zip-for-release)
+    - [Retrieve zip for OpenCTI pull request](#retrieve-zip-for-opencti-pull-request)
     - [Create a branch for the Pull Request](#create-a-branch-for-the-pull-request)
     - [Update sources](#update-sources)
     - [Test locally before pull request](#test-locally-before-pull-request)
@@ -26,7 +25,7 @@
   - [Once pull request is merged](#once-pull-request-is-merged)
     - [Sync fork with upstream](#sync-fork-with-upstream-1)
     - [Retrieve last version](#retrieve-last-version)
-    - [Create a new minor release](#create-a-new-minor-release)
+    - [Create a release](#create-a-release)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -101,7 +100,7 @@ docker exec -ti docker-connector-crowdsec-import-1 /bin/sh
 Then: 
 
 ```bash
-cd /opt/opencti-crowdsec-import/ && python3 main.py
+cd /opt/opencti-crowdsec/ && python3 main.py
 ```
 
 You should see log messages, one of which contains `CrowdSec external import running ...`.
@@ -159,7 +158,7 @@ npm install -g doctoc
 Then, run it in the documentation folder:
 
 ```bash
-doctoc docs/*
+doctoc docs/* --maxlevel 4 && doctoc README-OPENCTI.md --maxlevel 4
 ```
 
 
@@ -204,13 +203,10 @@ git push origin master --force
 
 ### Update fork sources
 
-#### Create a release
 
-Before creating a release, ensure to format correctly the `CHANGELOG.md` file and to update the `src/crowdsec/client.py` to update the user agent with the next version number. Then, you can use the [Create Release action](https://github.com/crowdsecurity/cs-opencti-external-import-connector/actions/workflows/release.yml).
+#### Retrieve zip for OpenCTI pull request
 
-#### Retrieve zip for release
-
-At the end of the Create Release action run, you can download a zip containing the relevant files.  
+Before creating the zip, ensure to format correctly `src/crowdsec/client_api.py` to update the user agent with the next version number. Then, you can use the [Create ZIP action](https://github.com/crowdsecurity/cs-opencti-external-import-connector/actions/workflows/zip-for-opencti-pr.yml).
 
 #### Create a branch for the Pull Request
 
@@ -236,13 +232,20 @@ Then, unzip the `crowdsec-opencti-external-import-connector-X.Y.Z.zip` archive i
 unzip /path/to/crowdsec-opencti-external-import-connector-X.Y.Z.zip -d external-import/crowdsec
 ```
 
+Delete the `README.md` file and rename the `README-OPENCTI.md` file to `README.md`:
+
+```shell
+rm README.md
+mv README-OPENCTI.md README.md
+```
+
 Now, you can verify the diff and you will probably need to update OpenCTI version in `docker-compose.yml` and `src/requirements.txt` files.
 
 Once all seems fine, add and commit your modifications:
 
 ```shell
 git add .
-git commit -m "[crowdsec] Update internal enrichment connector (vX.Y.Z)"
+git commit -m "[CrowdSec] Update external import connector (vX.Y.Z)"
 ```
 
 #### Test locally before pull request 
@@ -259,28 +262,35 @@ connector-crowdsec-import:
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
       - CONNECTOR_ID=35f117d3-508f-4306-ac18-01b8c3e741fd
       - CONNECTOR_TYPE=EXTERNAL_IMPORT
-      - "CONNECTOR_NAME=CrowdSec Import"
+      - CONNECTOR_NAME="CrowdSec Import"
       - CONNECTOR_SCOPE=IPv4-Addr,IPv6-Addr # MIME type or Stix Object
       - CONNECTOR_CONFIDENCE_LEVEL=100 # From 0 (Unknown) to 100 (Fully trusted)
       - CONNECTOR_LOG_LEVEL=debug
       - CROWDSEC_KEY=**************************** # Api Key
-      - CROWDSEC_VERSION=v2 #v2 is the only supported version for now
     restart: always
     depends_on:
       - opencti
 ```
+
+To ensure docker is using the right connector version, you can rebuild the `connector-crowdsec-import` container before starting the docker stack:
+
+```bash
+docker compose down -v
+docker compose build --no-cache connector-crowdsec-import
+docker compose up -d --force-recreate connector-crowdsec-import
+```
+
 
 #### Open a Pull request
 
 Push your modification 
 
 ```shell
-git push origin git push origin feat/release-X.Y.Z
+git push origin feat/release-X.Y.Z
 ```
 
 Now you can use the `feat/release-X.Y.Z` branch to open a pull request in the OpenCTI repository.
 For the pull request description, you could use the release version description that you wrote in the `CHANGELOG.md` file.
-
 
 
 ### During the pull request review
@@ -316,7 +326,7 @@ cd cs-opencti-external-import-connector
 git checkout feat/pr-review-X.Y.Z
 ```
 
-Delete all folders except `.git` and `.github` folders (this 2 specific folders did not belongs to the release zip archive)
+Delete all folders except `.git`, `.github`, `docs` and `dev` folders (these specific folders did not belong to the release zip archive)
 
 Copy all files from the connector's fork: 
 
@@ -327,18 +337,13 @@ cp -r ../connectors/external-import/crowdsec/. ./
 Add and commit the result. Push the `feat/pr-review-X-Y-Z` and merge it into `main` with a pull request.
 
 
-#### Create a new minor release
+#### Create a release
 
-Once the `main` branch is updated, you can create a new minor `X.Y+1.0` release with the following CHANGELOG content:
+Before creating a release, ensure to format correctly the `CHANGELOG.md` file and to update the `src/crowdsec/client_api.py` to update the user agent with the next version number. Then, you can use the [Create Release action](https://github.com/crowdsecurity/cs-opencti-external-import-connector/actions/workflows/release.yml).
 
-```
-## Changed
+You can add a line in the `CHANGELOG.md` file to indicate that this release is the result of the OpenCTI pull request review:
 
-- Synchronize content with OpenCTI connector's release [A.B.C](https://github.com/OpenCTI-Platform/connectors/releases/tag/A.B.C)
-
-```
-
-
+> Synchronized content with OpenCTI connector's release [A.B.C](https://github.com/OpenCTI-Platform/connectors/releases/tag/A.B.C)
 
 
 

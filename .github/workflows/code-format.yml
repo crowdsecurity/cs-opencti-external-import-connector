@@ -36,7 +36,7 @@ jobs:
         cd ${{ env.SOURCES }}
         python -m pip install --upgrade pip
         python -m pip install black isort flake8
-        python -m pip install -r src/test-requirements.txt
+        python -m pip install -r src/requirements.txt
 
     - name: Code format check
       run: |

@@ -41,7 +41,7 @@ jobs:
           path: ${{ env.VERSION_SOURCES }}
 
       - name: Check version ${{ env.VERSION_NUMBER }} consistency in files
-        # CHANGELOG.md, src/crowdsec/client.py
+        # CHANGELOG.md, src/crowdsec/client_api.py
         run: |
           cd ${{ env.VERSION_SOURCES }}
           # Check top ## [VERSION_NUMBER](GITHUB_URL/releases/tag/vVERSION_NUMBER) - yyyy-mm-dd in CHANGELOG.md
@@ -71,9 +71,9 @@ jobs:
             echo "$LAST_TAG...v${{ env.VERSION_NUMBER }})"
             exit 1
           fi
-          # Check "User-Agent": "crowdsec-import-opencti/vVERSION_NUMBER", in src/crowdsec/client.py
-          UA_VERSION=$(grep -E "\"User-Agent\": \"crowdsec-import-opencti\/v(.*)\""  src/crowdsec/client.py | sed 's/ //g' | sed 's/"//g')
-          if [[ $UA_VERSION == "User-Agent:crowdsec-import-opencti/v${{ env.VERSION_NUMBER }}," ]]
+          # Check "User-Agent": "crowdsec-opencti-import/vVERSION_NUMBER", in src/crowdsec/client_api.py
+          UA_VERSION=$(grep -E "\"User-Agent\": \"crowdsec-opencti-import\/v(.*)\""  src/crowdsec/client_api.py | sed 's/ //g' | sed 's/"//g')
+          if [[ $UA_VERSION == "User-Agent:crowdsec-opencti-import/v${{ env.VERSION_NUMBER }}," ]]
           then
               echo "USER AGENT VERSION OK"
           else
@@ -81,10 +81,6 @@ jobs:
               echo $UA_VERSION 
               exit 1
           fi
-
-      - name: Create zip for OpenCTI pull request
-        run: |
-          zip -r ${{ env.VERSION_SOURCES }}.zip ${{ env.VERSION_SOURCES }}/ -x '${{ env.VERSION_SOURCES }}/.git*'    
 
       - name: Create Tag ${{ github.event.inputs.tag_name }}
         uses: actions/github-script@v7
@@ -107,7 +103,6 @@ jobs:
       - name: Create release ${{ env.VERSION_NUMBER }}
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.VERSION_SOURCES }}.zip
           body_path: CHANGELOG.txt
           name: ${{ env.VERSION_NUMBER }}
           tag_name: ${{ github.event.inputs.tag_name }}

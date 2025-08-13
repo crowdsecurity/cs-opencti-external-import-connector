@@ -37,3 +37,4 @@ jobs:
           cd extension
           awesome_bot --files README.md --allow-dupe --allow-redirect --allow 401 --skip-save-results --base-url http://localhost:8080/
           awesome_bot docs/*.md --allow-dupe --allow-redirect --allow 401 --white-list http://opencti,https://github.com/OpenCTI-Platform/connectors/releases/tag/A.B.C --skip-save-results --base-url http://localhost:8080/docs/
+          awesome_bot --files README-OPENCTI.md --allow-dupe --allow-redirect --allow 401 --white-list http://opencti --skip-save-results --base-url http://localhost:8080/
