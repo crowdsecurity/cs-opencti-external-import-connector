@@ -16,8 +16,7 @@
 - [OpenCTI Pull Request](#opencti-pull-request)
   - [Sync fork with upstream](#sync-fork-with-upstream)
   - [Update fork sources](#update-fork-sources)
-    - [Create a release](#create-a-release)
-    - [Retrieve zip for release](#retrieve-zip-for-release)
+    - [Retrieve zip for OpenCTI pull request](#retrieve-zip-for-opencti-pull-request)
     - [Create a branch for the Pull Request](#create-a-branch-for-the-pull-request)
     - [Update sources](#update-sources)
     - [Test locally before pull request](#test-locally-before-pull-request)
@@ -26,7 +25,7 @@
   - [Once pull request is merged](#once-pull-request-is-merged)
     - [Sync fork with upstream](#sync-fork-with-upstream-1)
     - [Retrieve last version](#retrieve-last-version)
-    - [Create a new minor release](#create-a-new-minor-release)
+    - [Create a release](#create-a-release)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -204,13 +203,10 @@ git push origin master --force
 
 ### Update fork sources
 
-#### Create a release
 
-Before creating a release, ensure to format correctly the `CHANGELOG.md` file and to update the `src/crowdsec/client.py` to update the user agent with the next version number. Then, you can use the [Create Release action](https://github.com/crowdsecurity/cs-opencti-external-import-connector/actions/workflows/release.yml).
+#### Retrieve zip for OpenCTI pull request
 
-#### Retrieve zip for release
-
-At the end of the Create Release action run, you can download a zip containing the relevant files.  
+Before creating the zip, ensure to format correctly `src/crowdsec/client_api.py` to update the user agent with the next version number. Then, you can use the [Create ZIP action](https://github.com/crowdsecurity/cs-opencti-external-import-connector/actions/workflows/zip-for-opencti-pr.yml).
 
 #### Create a branch for the Pull Request
 
@@ -266,12 +262,11 @@ connector-crowdsec-import:
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
       - CONNECTOR_ID=35f117d3-508f-4306-ac18-01b8c3e741fd
       - CONNECTOR_TYPE=EXTERNAL_IMPORT
-      - "CONNECTOR_NAME=CrowdSec Import"
+      - CONNECTOR_NAME="CrowdSec Import"
       - CONNECTOR_SCOPE=IPv4-Addr,IPv6-Addr # MIME type or Stix Object
       - CONNECTOR_CONFIDENCE_LEVEL=100 # From 0 (Unknown) to 100 (Fully trusted)
       - CONNECTOR_LOG_LEVEL=debug
       - CROWDSEC_KEY=**************************** # Api Key
-      - CROWDSEC_VERSION=v2 #v2 is the only supported version for now
     restart: always
     depends_on:
       - opencti
@@ -296,7 +291,6 @@ git push origin feat/release-X.Y.Z
 
 Now you can use the `feat/release-X.Y.Z` branch to open a pull request in the OpenCTI repository.
 For the pull request description, you could use the release version description that you wrote in the `CHANGELOG.md` file.
-
 
 
 ### During the pull request review
@@ -343,18 +337,13 @@ cp -r ../connectors/external-import/crowdsec/. ./
 Add and commit the result. Push the `feat/pr-review-X-Y-Z` and merge it into `main` with a pull request.
 
 
-#### Create a new minor release
+#### Create a release
 
-Once the `main` branch is updated, you can create a new minor `X.Y+1.0` release with the following CHANGELOG content:
+Before creating a release, ensure to format correctly the `CHANGELOG.md` file and to update the `src/crowdsec/client_api.py` to update the user agent with the next version number. Then, you can use the [Create Release action](https://github.com/crowdsecurity/cs-opencti-external-import-connector/actions/workflows/release.yml).
 
-```
-## Changed
+You can add a line in the `CHANGELOG.md` file to indicate that this release is the result of the OpenCTI pull request review:
 
-- Synchronize content with OpenCTI connector's release [A.B.C](https://github.com/OpenCTI-Platform/connectors/releases/tag/A.B.C)
-
-```
-
-
+> Synchronized content with OpenCTI connector's release [A.B.C](https://github.com/OpenCTI-Platform/connectors/releases/tag/A.B.C)
 
 
 
