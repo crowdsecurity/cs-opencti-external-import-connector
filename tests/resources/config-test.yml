@@ -1,4 +1,4 @@
-# Tis file overrides the default configuration file for test purposes.
+# This file overrides the default configuration file for test purposes.
 connector:
   log_level: 'info' # Log level (debug, info, warn, error)
   duration_period: 'PT24H'

@@ -414,7 +414,11 @@ class CrowdSecImporter:
                     f"Processing batch {batch_index}/{total_batch_count} "
                     f"took {batch_time_taken:.4f} seconds"
                 )
+                # Calculate the remaining processing time every 5 batches for progress updates
                 if batch_index % 5 == 0 and enrichments_count > 0:
+                    # Estimate time remaining based on two scenarios:
+                    # 1. If enrichment threshold > IP count: estimate based on remaining batches
+                    # 2. If enrichment threshold <= IP count: estimate based on remaining enrichments to reach the threshold
                     remaining_time = (
                         (time_from_enrichment_start / batch_index)
                         * (total_batch_count - batch_index)

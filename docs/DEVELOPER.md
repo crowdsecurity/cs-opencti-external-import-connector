@@ -328,11 +328,12 @@ git checkout feat/pr-review-X.Y.Z
 
 Delete all folders except `.git`, `.github`, `docs` and `dev` folders (these specific folders did not belong to the release zip archive)
 
-Copy all files from the connector's fork: 
+Keep `.gitignore`, `CHANGELOG.md`, `README.md` and `README-OPENCTI.md` files.
 
-```
-cp -r ../connectors/external-import/crowdsec/. ./
-```
+Then,
+
+Copy all files (except `README.md`) from the connector's fork.
+
 
 Add and commit the result. Push the `feat/pr-review-X-Y-Z` and merge it into `main` with a pull request.
 

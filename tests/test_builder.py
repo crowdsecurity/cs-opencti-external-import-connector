@@ -28,7 +28,7 @@ class CrowdSecBuilderTest(unittest.TestCase):
 
         # Mock the config file path to use test config
         test_config_path = os.path.join(
-            os.path.dirname(__file__), "resources", "config.yml"
+            os.path.dirname(__file__), "resources", "config-test.yml"
         )
         with patch.object(CrowdSecConfig, "_load_config") as mock_load_config:
             with open(test_config_path) as f:
