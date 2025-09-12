@@ -317,7 +317,7 @@ First, sync the connector fork like we did [here](#sync-fork-with-upstream).
 
 #### Retrieve last version
 
-After this, you should have the last version of the CrowdSec internal enrichment connector in `connectors/external-import/crowdsec` folder.
+After this, you should have the last version of the CrowdSec external import connector in `connectors/external-import/crowdsec` folder.
 
 You need to retrieve it and commit the differences.
 
